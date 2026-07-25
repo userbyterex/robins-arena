@@ -1,0 +1,222 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=VT323&display=swap');
+
+:root{
+  --forest:#1a2b1e;
+  --forest-dark:#0f1a12;
+  --parchment:#e8dcc0;
+  --parchment-dark:#d8c8a2;
+  --wine:#7a1f2b;
+  --wine-dark:#5c1620;
+  --gold:#c9a227;
+  --charcoal:#241f1a;
+}
+
+*{ box-sizing:border-box; }
+
+html,body{
+  margin:0; padding:0; height:100%;
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(0,0,0,0) 0%, rgba(0,0,0,0.55) 70%),
+    linear-gradient(180deg, var(--forest) 0%, var(--forest-dark) 100%);
+  color:var(--parchment);
+  font-family:'VT323', monospace;
+  font-size:22px;
+  overflow-x:hidden;
+}
+
+/* subtle canvas texture via repeating noise-like gradient */
+body::before{
+  content:"";
+  position:fixed; inset:0;
+  background-image:
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 3px);
+  pointer-events:none;
+}
+
+.stage{
+  min-height:100vh;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:32px 16px;
+  position:relative;
+}
+
+.carved-title{
+  font-family:'Cinzel', serif;
+  font-weight:900;
+  font-size:clamp(2.2rem, 8vw, 3.6rem);
+  letter-spacing:0.12em;
+  margin:0;
+  color:var(--parchment);
+  text-shadow:
+    0 1px 0 #000,
+    0 2px 4px rgba(0,0,0,0.6),
+    0 0 24px rgba(201,162,39,0.25);
+}
+
+.subtitle{
+  font-size:1.1rem;
+  letter-spacing:0.05em;
+  color:var(--gold);
+  opacity:0.85;
+  margin:6px 0 34px 0;
+  text-align:center;
+}
+
+/* ---------- scroll / parchment panel ---------- */
+.scroll{
+  position:relative;
+  width:min(420px, 90vw);
+  min-height:280px;
+  background:
+    linear-gradient(180deg, var(--parchment) 0%, var(--parchment-dark) 100%);
+  color:var(--charcoal);
+  border-radius:6px;
+  padding:34px 28px;
+  box-shadow:
+    0 12px 40px rgba(0,0,0,0.55),
+    inset 0 0 0 2px rgba(122,31,43,0.15),
+    inset 0 0 60px rgba(122,31,43,0.08);
+  clip-path: polygon(
+    1% 4%, 6% 0%, 14% 2%, 22% 0%, 30% 2%, 38% 0%, 46% 2%, 54% 0%, 62% 2%, 70% 0%, 78% 2%, 86% 0%, 94% 3%, 100% 5%,
+    99% 96%, 93% 100%, 85% 98%, 77% 100%, 69% 98%, 61% 100%, 53% 98%, 45% 100%, 37% 98%, 29% 100%, 21% 98%, 13% 100%, 5% 97%, 0% 94%
+  );
+}
+
+.scroll-panel{ display:none; flex-direction:column; align-items:center; gap:14px; }
+.scroll-panel[data-active="true"]{ display:flex; }
+
+.scroll-label{
+  font-family:'Cinzel', serif;
+  font-weight:700;
+  font-size:1.15rem;
+  letter-spacing:0.03em;
+  text-align:center;
+  margin:0 0 4px 0;
+  color:var(--wine-dark);
+}
+
+.scroll-hint{
+  font-size:1rem;
+  opacity:0.75;
+  margin:0;
+  text-align:center;
+}
+
+.parchment-input{
+  width:100%;
+  font-family:'VT323', monospace;
+  font-size:1.4rem;
+  text-align:center;
+  letter-spacing:0.08em;
+  padding:10px 12px;
+  background:rgba(255,255,255,0.35);
+  border:2px solid var(--wine-dark);
+  border-radius:4px;
+  color:var(--charcoal);
+  outline:none;
+}
+.parchment-input:focus{ border-color:var(--gold); background:rgba(255,255,255,0.55); }
+.parchment-input::placeholder{ color:rgba(36,31,26,0.45); text-transform:uppercase; }
+
+/* ---------- wax seal buttons ---------- */
+.wax-seal{
+  width:100%;
+  font-family:'Cinzel', serif;
+  font-weight:700;
+  font-size:1.05rem;
+  letter-spacing:0.04em;
+  color:var(--parchment);
+  background:radial-gradient(circle at 35% 30%, #9c2a38, var(--wine) 60%, var(--wine-dark) 100%);
+  border:none;
+  border-radius:50px;
+  padding:14px 18px;
+  cursor:pointer;
+  box-shadow:0 4px 0 var(--wine-dark), 0 6px 12px rgba(0,0,0,0.4);
+  transition:transform 0.08s ease, box-shadow 0.08s ease;
+}
+.wax-seal:hover:not(:disabled){ transform:translateY(-1px); }
+.wax-seal:active:not(:disabled){ transform:translateY(2px); box-shadow:0 2px 0 var(--wine-dark), 0 3px 6px rgba(0,0,0,0.4); }
+.wax-seal:disabled{ opacity:0.45; cursor:not-allowed; }
+
+.wax-seal--secondary{
+  background:radial-gradient(circle at 35% 30%, #2c4530, var(--forest) 60%, var(--forest-dark) 100%);
+  box-shadow:0 4px 0 var(--forest-dark), 0 6px 12px rgba(0,0,0,0.4);
+}
+
+.link-back{
+  background:none; border:none;
+  font-family:'VT323', monospace;
+  font-size:1.05rem;
+  color:var(--wine-dark);
+  opacity:0.7;
+  cursor:pointer;
+  text-decoration:underline;
+  padding:4px;
+}
+.link-back:hover{ opacity:1; }
+
+/* ---------- wax stamp room code ---------- */
+.wax-stamp{
+  width:104px; height:104px;
+  margin:6px auto 2px auto;
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(circle at 35% 30%, #9c2a38, var(--wine) 55%, var(--wine-dark) 100%);
+  box-shadow:0 4px 10px rgba(0,0,0,0.45), inset 0 0 0 3px rgba(255,255,255,0.08);
+  font-family:'Cinzel', serif;
+  font-weight:900;
+  font-size:1.5rem;
+  letter-spacing:0.1em;
+  color:var(--parchment);
+}
+
+/* ---------- roster ---------- */
+.roster{
+  list-style:none;
+  padding:0; margin:6px 0;
+  width:100%;
+  display:flex; flex-direction:column; gap:6px;
+}
+.roster li{
+  font-family:'VT323', monospace;
+  font-size:1.15rem;
+  padding:6px 12px;
+  background:rgba(122,31,43,0.08);
+  border-left:3px solid var(--wine);
+  border-radius:2px;
+}
+.roster li.you::after{ content:" (tú)"; opacity:0.6; font-size:0.9rem; }
+
+/* ---------- ambient torches ---------- */
+.torch{
+  position:fixed; top:12%; width:6px; height:90px;
+  background:linear-gradient(180deg, transparent, var(--gold) 40%, var(--wine) 100%);
+  filter:blur(6px);
+  opacity:0.35;
+  animation:flicker 2.4s ease-in-out infinite;
+  pointer-events:none;
+}
+.torch-left{ left:6%; animation-delay:0.3s; }
+.torch-right{ right:6%; animation-delay:0.9s; }
+@keyframes flicker{
+  0%,100%{ opacity:0.25; transform:scaleY(1); }
+  50%{ opacity:0.45; transform:scaleY(1.08); }
+}
+
+.footer-note{
+  margin-top:22px;
+  font-size:0.95rem;
+  opacity:0.4;
+  letter-spacing:0.03em;
+}
+
+@media (prefers-reduced-motion: reduce){
+  .torch{ animation:none; }
+  .wax-seal{ transition:none; }
+}
+
+/* keyboard focus visibility */
+button:focus-visible, input:focus-visible{
+  outline:3px solid var(--gold);
+  outline-offset:2px;
+}

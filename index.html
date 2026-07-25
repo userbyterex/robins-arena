@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Robin's Arena</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/hud.css">
+</head>
+<body>
+
+  <!-- ============ PANTALLA DE JUEGO ============ -->
+  <div id="screen-game" class="game-screen" hidden>
+    <div class="game-viewport">
+      <canvas id="game-canvas" width="960" height="640"></canvas>
+
+      <!-- Zonas táctiles: izquierda mueve, derecha apunta y ataca. Ocultas en PC. -->
+      <div id="touch-zone-move" class="touch-zone touch-zone--left">
+        <div class="joystick" id="joystick-move"><div class="joystick-knob"></div></div>
+      </div>
+      <div id="touch-zone-aim" class="touch-zone touch-zone--right">
+        <div class="joystick" id="joystick-aim"><div class="joystick-knob"></div></div>
+      </div>
+
+      <!-- Barra de armas: botones reales, funcionan con tap y con clic. -->
+      <div id="weapon-bar" class="weapon-bar"></div>
+    </div>
+  </div>
+
+  <!-- ============ PANTALLA DE LOBBY ============ -->
+  <div id="screen-lobby">
+
+  <div class="torch torch-left"></div>
+  <div class="torch torch-right"></div>
+
+  <main class="stage">
+    <h1 class="carved-title">ROBIN'S ARENA</h1>
+    <p class="subtitle">arcos &middot; ballestas &middot; espadas &middot; hachas &middot; 4 jugadores</p>
+
+    <section class="scroll" id="scroll-menu">
+
+      <!-- Pantalla: elegir nombre -->
+      <div class="scroll-panel" id="panel-name" data-active="true">
+        <p class="scroll-label">Se busca a un forajido</p>
+        <input type="text" id="input-name" class="parchment-input" placeholder="Tu nombre" maxlength="14">
+        <button class="wax-seal" id="btn-continue">Sellar</button>
+      </div>
+
+      <!-- Pantalla: crear o unirse -->
+      <div class="scroll-panel" id="panel-choice" data-active="false">
+        <p class="scroll-label">¿Fundar un campamento o unirte a uno?</p>
+        <button class="wax-seal" id="btn-host">Fundar campamento</button>
+        <button class="wax-seal wax-seal--secondary" id="btn-join-open">Unirme con código</button>
+      </div>
+
+      <!-- Pantalla: unirse con código -->
+      <div class="scroll-panel" id="panel-join" data-active="false">
+        <p class="scroll-label">Código del campamento</p>
+        <input type="text" id="input-code" class="parchment-input" placeholder="XXXX" maxlength="4" autocapitalize="characters">
+        <button class="wax-seal" id="btn-join-confirm">Entrar</button>
+        <button class="link-back" id="btn-join-back">&larr; volver</button>
+      </div>
+
+      <!-- Pantalla: sala de espera -->
+      <div class="scroll-panel" id="panel-lobby" data-active="false">
+        <p class="scroll-label">Campamento</p>
+        <div class="wax-stamp" id="room-code-display">----</div>
+        <p class="scroll-hint" id="lobby-status">Esperando forajidos&hellip;</p>
+        <ul class="roster" id="player-roster"></ul>
+        <button class="wax-seal" id="btn-start-game" disabled>Comenzar la cacería</button>
+        <button class="link-back" id="btn-lobby-back">&larr; abandonar</button>
+      </div>
+
+    </section>
+
+    <p class="footer-note">Robin's Arena &mdash; 4 forajidos, 5 armas, un solo vencedor</p>
+  </main>
+
+  </div><!-- /screen-lobby -->
+
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="js/network.js"></script>
+  <script src="js/engine/map.js"></script>
+  <script src="js/engine/camera.js"></script>
+  <script src="js/engine/input.js"></script>
+  <script src="js/engine/touch-controls.js"></script>
+  <script src="js/entities/weapons.js"></script>
+  <script src="js/entities/player.js"></script>
+  <script src="js/entities/projectile.js"></script>
+  <script src="js/combat.js"></script>
+  <script src="js/host-sim.js"></script>
+  <script src="js/client-sync.js"></script>
+  <script src="js/hud.js"></script>
+  <script src="js/ui-weapon-bar.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/particles.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

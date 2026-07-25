@@ -1,0 +1,116 @@
+.game-screen{
+  position:fixed; inset:0;
+  background:#0f1a12;
+  display:flex; align-items:center; justify-content:center;
+  z-index:10;
+  overflow:hidden;
+}
+
+.game-viewport{
+  position:relative;
+  line-height:0; /* el wrapper se ajusta exactamente al tamaño del canvas */
+  max-width:100vw;
+  max-height:100vh;
+}
+
+#game-canvas{
+  image-rendering:pixelated;
+  image-rendering:crisp-edges;
+  background:#2d4a30;
+  display:block;
+  max-width:100vw;
+  max-height:100vh;
+  width:auto; height:auto;
+  aspect-ratio:960/640;
+  border:2px solid #0f1a12;
+  cursor:crosshair;
+  touch-action:none; /* evita que el navegador haga scroll/zoom al tocar */
+}
+
+@media (max-width:1000px){
+  #game-canvas{ width:100vw; height:auto; }
+}
+
+/* ================= Controles táctiles ================= */
+
+.touch-zone{
+  position:absolute;
+  top:0; bottom:0;
+  width:50%;
+  touch-action:none;
+  /* invisible: solo captura el gesto, el joystick visual aparece donde se toca */
+}
+.touch-zone--left{ left:0; }
+.touch-zone--right{ right:0; }
+
+.joystick{
+  position:absolute;
+  width:92px; height:92px;
+  margin-left:-46px; margin-top:-46px;
+  border-radius:50%;
+  background:rgba(232,220,192,0.12);
+  border:2px solid rgba(232,220,192,0.35);
+  opacity:0;
+  transition:opacity 0.12s ease;
+  pointer-events:none;
+}
+.joystick-knob{
+  position:absolute;
+  left:50%; top:50%;
+  width:44px; height:44px;
+  margin-left:-22px; margin-top:-22px;
+  border-radius:50%;
+  background:rgba(201,162,39,0.55);
+  border:2px solid rgba(232,220,192,0.6);
+}
+
+/* Los joysticks solo tienen sentido en pantallas táctiles: en dispositivos
+   con mouse/trackpad de precisión los ocultamos para no estorbar. */
+@media (hover:hover) and (pointer:fine){
+  .touch-zone{ display:none; }
+}
+
+/* ================= Barra de armas (botones reales) ================= */
+
+.weapon-bar{
+  position:absolute;
+  left:50%; bottom:14px;
+  transform:translateX(-50%);
+  display:flex; gap:8px;
+  pointer-events:auto;
+  z-index:5;
+}
+
+.weapon-btn{
+  width:52px; height:52px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:rgba(36,31,26,0.72);
+  border:1px solid rgba(232,220,192,0.5);
+  border-radius:6px;
+  cursor:pointer;
+  padding:0;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+}
+.weapon-btn .weapon-icon{ font-size:22px; line-height:1; }
+.weapon-btn .weapon-key{
+  font-family:'VT323', monospace;
+  font-size:11px;
+  color:#e8dcc0;
+  opacity:0.75;
+  margin-top:2px;
+}
+.weapon-btn.active{
+  background:rgba(201,162,39,0.85);
+  border-color:#e8dcc0;
+  border-width:2px;
+}
+.weapon-btn:focus-visible{
+  outline:3px solid var(--gold, #c9a227);
+  outline-offset:2px;
+}
+
+@media (max-width:600px){
+  .weapon-btn{ width:44px; height:44px; }
+  .weapon-btn .weapon-icon{ font-size:18px; }
+}
