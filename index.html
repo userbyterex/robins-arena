@@ -4,6 +4,28 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Robin's Arena</title>
+<script>
+  // Cartel de error visible en pantalla: útil para depurar en celular,
+  // donde no hay acceso fácil a la consola del navegador.
+  window.addEventListener("error", (e) => showFatalError(e.message, e.filename, e.lineno));
+  window.addEventListener("unhandledrejection", (e) => showFatalError(String(e.reason)));
+  function showFatalError(msg, file, line) {
+    let box = document.getElementById("fatal-error-box");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "fatal-error-box";
+      box.style.cssText = "position:fixed;inset:0;z-index:99999;background:#3a0d0d;color:#fff;" +
+        "font:14px monospace;padding:16px;overflow:auto;white-space:pre-wrap;";
+      document.body.appendChild(box);
+    }
+    const line2 = document.createElement("div");
+    line2.style.marginBottom = "10px";
+    line2.style.borderBottom = "1px solid rgba(255,255,255,0.3)";
+    line2.style.paddingBottom = "10px";
+    line2.textContent = "ERROR: " + msg + (file ? `\n  en ${file.split("/").pop()}:${line}` : "");
+    box.appendChild(line2);
+  }
+</script>
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/hud.css">
 </head>
