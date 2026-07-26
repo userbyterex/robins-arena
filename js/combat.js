@@ -75,12 +75,13 @@ const Combat = (() => {
     return { survivors, events };
   }
 
-  // Revisa respawns pendientes.
+  // Revisa respawns pendientes. respawnAt = Infinity => desconectado, no revive.
   function processRespawns(players, spawnAssignment) {
     const now = performance.now() / 1000;
     for (const p of players) {
-      if (!p.alive && now >= p.respawnAt) {
-        const spawn = GameMap.SPAWNS[spawnAssignment[p.id] % GameMap.SPAWNS.length];
+      if (!p.alive && Number.isFinite(p.respawnAt) && now >= p.respawnAt) {
+        const idx = spawnAssignment[p.id];
+        const spawn = GameMap.SPAWNS[(idx != null ? idx : 0) % GameMap.SPAWNS.length];
         p.x = spawn.x;
         p.y = spawn.y;
         p.hp = MAX_HP;
