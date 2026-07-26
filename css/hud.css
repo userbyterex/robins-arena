@@ -6,9 +6,14 @@
   overflow:hidden;
 }
 
+/* CRÍTICO: sin esto, display:flex anula el atributo hidden en móvil */
+.game-screen[hidden]{
+  display:none !important;
+}
+
 .game-viewport{
   position:relative;
-  line-height:0; /* el wrapper se ajusta exactamente al tamaño del canvas */
+  line-height:0;
   max-width:100vw;
   max-height:100vh;
 }
@@ -24,7 +29,7 @@
   aspect-ratio:960/640;
   border:2px solid #0f1a12;
   cursor:crosshair;
-  touch-action:none; /* evita que el navegador haga scroll/zoom al tocar */
+  touch-action:none;
 }
 
 @media (max-width:1000px){
@@ -38,7 +43,6 @@
   top:0; bottom:0;
   width:50%;
   touch-action:none;
-  /* invisible: solo captura el gesto, el joystick visual aparece donde se toca */
 }
 .touch-zone--left{ left:0; }
 .touch-zone--right{ right:0; }
@@ -64,13 +68,11 @@
   border:2px solid rgba(232,220,192,0.6);
 }
 
-/* Los joysticks solo tienen sentido en pantallas táctiles: en dispositivos
-   con mouse/trackpad de precisión los ocultamos para no estorbar. */
 @media (hover:hover) and (pointer:fine){
   .touch-zone{ display:none; }
 }
 
-/* ================= Barra de armas (botones reales) ================= */
+/* ================= Barra de armas ================= */
 
 .weapon-bar{
   position:absolute;
