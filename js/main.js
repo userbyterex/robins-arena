@@ -31,7 +31,8 @@
   }
 
   function showError(err) {
-    lobbyStatus.textContent = "Algo salió mal: " + (err && err.message ? err.message : "intenta de nuevo.");
+    const msg = err && err.message ? err.message : (typeof err === "string" ? err : "intenta de nuevo.");
+    lobbyStatus.textContent = "Algo salió mal: " + msg;
   }
 
   function renderRoster(list) {
@@ -85,6 +86,7 @@
   // --- Panel: elegir host / join ---
   document.getElementById("btn-host").addEventListener("click", () => {
     isHost = true;
+    lobbyStatus.textContent = "Abriendo el campamento\u2026";
     Network.hostRoom(playerName, {
       ...sharedCallbacks,
       onHostReady: (code) => {
@@ -106,12 +108,14 @@
       return;
     }
     isHost = false;
+    lobbyStatus.textContent = "Conectando con el campamento\u2026";
+    showPanel("lobby");
+    roomCodeDisplay.textContent = code;
     Network.joinRoom(code, playerName, {
       ...sharedCallbacks,
-      onJoined: (code) => {
-        currentRoomCode = code;
-        roomCodeDisplay.textContent = code;
-        showPanel("lobby");
+      onJoined: (joinedCode) => {
+        currentRoomCode = joinedCode;
+        roomCodeDisplay.textContent = joinedCode;
       },
       onHostLeft: () => {
         lobbyStatus.textContent = "El anfitrión abandonó el campamento.";
