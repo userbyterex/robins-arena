@@ -1,13 +1,14 @@
 /**
- * client-sync.js — Snapshot interpolation for non-host clients.
+ * client-sync.js — Snapshot interpolation (players + npcs + flags).
+ * No template literals (paste-safe).
  */
 const ClientSync = (() => {
-  let latest = null;
-  const rendered = new Map();
-  const SNAP_DISTANCE = 80;
+  var latest = null;
+  var rendered = new Map();
+  var SNAP_DISTANCE = 80;
 
   function init(onEvents) {
-    Network.onMessage("snapshot", (msg) => {
+    Network.onMessage("snapshot", function (msg) {
       latest = msg;
       if (onEvents && msg.events && msg.events.length) onEvents(msg.events);
     });
@@ -15,15 +16,15 @@ const ClientSync = (() => {
 
   function update() {
     if (!latest) return;
-    for (const p of latest.players) {
-      let r = rendered.get(p.id);
+    for (var i = 0; i < latest.players.length; i++) {
+      var p = latest.players[i];
+      var r = rendered.get(p.id);
       if (!r) {
-        r = { x: p.x, y: p.y };
-        rendered.set(p.id, r);
+        rendered.set(p.id, { x: p.x, y: p.y });
         continue;
       }
-      const dx = p.x - r.x;
-      const dy = p.y - r.y;
+      var dx = p.x - r.x;
+      var dy = p.y - r.y;
       if (dx * dx + dy * dy > SNAP_DISTANCE * SNAP_DISTANCE) {
         r.x = p.x;
         r.y = p.y;
@@ -36,14 +37,22 @@ const ClientSync = (() => {
 
   function getPlayers() {
     if (!latest) return [];
-    return latest.players.map((p) => {
-      const r = rendered.get(p.id) || { x: p.x, y: p.y };
-      return { ...p, x: r.x, y: r.y };
+    return latest.players.map(function (p) {
+      var r = rendered.get(p.id) || { x: p.x, y: p.y };
+      return Object.assign({}, p, { x: r.x, y: r.y });
     });
   }
 
   function getProjectiles() {
     return latest ? latest.projectiles : [];
+  }
+
+  function getNpcs() {
+    return latest && latest.npcs ? latest.npcs : [];
+  }
+
+  function getFlags() {
+    return latest && latest.flags ? latest.flags : [];
   }
 
   function getKillfeed() {
@@ -66,5 +75,17 @@ const ClientSync = (() => {
     return latest !== null;
   }
 
-  return { init, update, getPlayers, getProjectiles, getKillfeed, isMatchOver, getWinnerName, getTimeLeft, hasReceivedFirstSnapshot };
+  return {
+    init: init,
+    update: update,
+    getPlayers: getPlayers,
+    getProjectiles: getProjectiles,
+    getNpcs: getNpcs,
+    getFlags: getFlags,
+    getKillfeed: getKillfeed,
+    isMatchOver: isMatchOver,
+    getWinnerName: getWinnerName,
+    getTimeLeft: getTimeLeft,
+    hasReceivedFirstSnapshot: hasReceivedFirstSnapshot,
+  };
 })();
