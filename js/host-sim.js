@@ -16,7 +16,7 @@ const HostSim = (() => {
   let matchStartTime = 0;
   let matchOver = false;
   let winnerName = null;
-  let tickEvents = [];           // eventos de ESTE tick, para sonido (kind: 'melee'|'ranged'|'hit'|'death')
+  let tickEvents = [];           // eventos de ESTE tick, para sonido
 
   function init(playerConfigs) {
     // playerConfigs: [{id, name, colorIndex, spawnIndex}]
@@ -36,6 +36,16 @@ const HostSim = (() => {
 
   function setInput(id, input) {
     inputs.set(id, input);
+  }
+
+  /** Marca a un jugador desconectado como muerto permanente (no respawnea). */
+  function markDisconnected(peerId) {
+    const p = players.get(peerId);
+    if (!p) return;
+    p.alive = false;
+    p.hp = 0;
+    p.respawnAt = Infinity; // no vuelve
+    inputs.delete(peerId);
   }
 
   function tick(dt) {
@@ -81,7 +91,7 @@ const HostSim = (() => {
     projectiles = survivors;
     registerEvents(events);
 
-    // Respawns
+    // Respawns (solo si respawnAt es finito)
     Combat.processRespawns(Array.from(players.values()), Object.fromEntries(spawnAssignment));
 
     // Condición de victoria
@@ -153,5 +163,5 @@ const HostSim = (() => {
     return tickEvents;
   }
 
-  return { init, setInput, tick, getState, getSnapshotPayload, getTickEvents, TICK_RATE };
+  return { init, setInput, tick, getState, getSnapshotPayload, getTickEvents, markDisconnected, TICK_RATE };
 })();
