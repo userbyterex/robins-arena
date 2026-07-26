@@ -49,6 +49,9 @@ const Game = (() => {
       Network.onMessage("input", (msg, fromPeerId) => {
         HostSim.setInput(fromPeerId, msg);
       });
+      Network.onMessage("peer-left", (msg) => {
+        if (msg && msg.peerId) HostSim.markDisconnected(msg.peerId);
+      });
     } else {
       ClientSync.init(playEventFX);
     }
