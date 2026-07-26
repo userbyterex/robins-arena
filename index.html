@@ -1,175 +1,172 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Robin's Arena</title>
-  <link rel="stylesheet" href="css/style.css" />
-  <link rel="stylesheet" href="css/hud.css" />
-  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
-  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-  <style>
-    /* Estilos extra para la nueva interfaz simple */
-    body {
-      background: #1a1a2e;
-      color: #eee;
-      font-family: 'VT323', monospace;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      margin: 0;
-      padding: 20px;
-    }
-    .lobby-container {
-      background: #16213e;
-      padding: 30px 40px;
-      border-radius: 20px;
-      box-shadow: 0 0 40px rgba(0,0,0,0.8);
-      max-width: 500px;
-      width: 100%;
-      text-align: center;
-    }
-    h1 {
-      font-size: 3rem;
-      margin: 0 0 10px;
-      color: #f5c842;
-      letter-spacing: 2px;
-    }
-    .subtitle {
-      color: #aaa;
-      font-size: 1.2rem;
-      margin-bottom: 30px;
-    }
-    input, button {
-      font-family: inherit;
-      font-size: 1.2rem;
-      padding: 12px 20px;
-      border: none;
-      border-radius: 10px;
-      outline: none;
-      background: #0f3460;
-      color: #fff;
-      width: 100%;
-      box-sizing: border-box;
-      margin-bottom: 15px;
-      transition: 0.2s;
-    }
-    input::placeholder {
-      color: #88aacc;
-    }
-    input:focus {
-      background: #1a4a7a;
-      box-shadow: 0 0 10px #f5c84288;
-    }
-    button {
-      background: #f5c842;
-      color: #1a1a2e;
-      font-weight: bold;
-      cursor: pointer;
-      width: 100%;
-      padding: 14px;
-      letter-spacing: 1px;
-    }
-    button:hover {
-      background: #ffd966;
-      transform: scale(1.02);
-    }
-    .btn-secondary {
-      background: #2a4a7a;
-      color: #fff;
-    }
-    .btn-secondary:hover {
-      background: #3a6a9a;
-    }
-    .camp-list {
-      list-style: none;
-      padding: 0;
-      margin: 15px 0;
-      text-align: left;
-      background: #0a1a2a;
-      border-radius: 10px;
-      max-height: 150px;
-      overflow-y: auto;
-    }
-    .camp-list li {
-      padding: 10px 15px;
-      border-bottom: 1px solid #2a3a5a;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .camp-list li:last-child {
-      border-bottom: none;
-    }
-    .camp-list .empty {
-      color: #888;
-      text-align: center;
-      padding: 20px;
-      font-style: italic;
-    }
-    .camp-code {
-      font-weight: bold;
-      color: #f5c842;
-    }
-    .join-btn-small {
-      background: #4a8a4a;
-      padding: 6px 14px;
-      border-radius: 6px;
-      font-size: 1rem;
-      width: auto;
-      margin: 0;
-    }
-    .join-btn-small:hover {
-      background: #5aaa5a;
-    }
-    .flex-row {
-      display: flex;
-      gap: 10px;
-    }
-    .flex-row input {
-      flex: 1;
-      margin-bottom: 0;
-    }
-    .flex-row button {
-      width: auto;
-      padding: 12px 24px;
-      white-space: nowrap;
-    }
-    .or-divider {
-      color: #666;
-      margin: 20px 0 15px;
-      font-size: 1rem;
-    }
-    .hidden {
-      display: none !important;
-    }
-    /* Para el panel de lobby (cuando se crea/une) */
-    #panel-lobby {
-      margin-top: 20px;
-      border-top: 2px solid #2a4a7a;
-      padding-top: 20px;
-    }
-    #player-roster {
-      list-style: none;
-      padding: 0;
-      text-align: left;
-      margin: 10px 0;
-    }
-    #player-roster li {
-      padding: 6px 10px;
-      background: #0f3460;
-      margin-bottom: 4px;
-      border-radius: 6px;
-    }
-    .back-btn {
-      background: #6a4a4a;
-      margin-top: 10px;
-    }
-    .back-btn:hover {
-      background: #8a5a5a;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Robin's Arena</title>
+<link rel="stylesheet" href="css/style.css" />
+<link rel="stylesheet" href="css/hud.css" />
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<style>
+body {
+  background:#1a1a2e;
+  color:#eee;
+  font-family:'VT323', monospace;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height:100vh;
+  margin:0;
+  padding:20px;
+}
+.lobby-container {
+  background:#16213e;
+  padding:30px 40px;
+  border-radius:20px;
+  box-shadow:0 0 40px rgba(0,0,0,0.8);
+  max-width:500px;
+  width:100%;
+  text-align: center;
+}
+h1 {
+  font-size:3rem;
+  margin:0 0 10px;
+  color:#f5c842;
+  letter-spacing:2px;
+}
+.subtitle {
+  color:#aaa;
+  font-size:1.2rem;
+  margin-bottom:30px;
+}
+input,button {
+  font-family: inherit;
+  font-size:1.2rem;
+  padding:12px 20px;
+  border: none;
+  border-radius:10px;
+  outline: none;
+  background:#0f3460;
+  color:#fff;
+  width:100%;
+  box-sizing: border-box;
+  margin-bottom:15px;
+  transition:0.2s;
+}
+input::placeholder { color:#88aacc; }
+input:focus {
+  background:#1a4a7a;
+  box-shadow:0 0 10px #f5c84288;
+}
+button {
+  background:#f5c842;
+  color:#1a1a2e;
+  font-weight: bold;
+  cursor: pointer;
+  width:100%;
+  padding:14px;
+  letter-spacing:1px;
+}
+button:hover {
+  background:#ffd966;
+  transform:scale(1.02);
+}
+.btn-secondary {
+  background:#2a4a7a;
+  color:#fff;
+}
+.btn-secondary:hover { background:#3a6a9a; }
+.back-btn {
+  background:transparent;
+  color:#88aacc;
+  border:1px solid #2a4a7a;
+}
+.back-btn:hover { background:#0f3460; }
+.camp-list {
+  list-style: none;
+  padding:0;
+  margin:15px 0;
+  text-align: left;
+  background:#0a1a2a;
+  border-radius:10px;
+  max-height:150px;
+  overflow-y: auto;
+}
+.camp-list li {
+  padding:10px 15px;
+  border-bottom:1px solid #2a3a5a;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.camp-list li:last-child { border-bottom: none; }
+.camp-list .empty {
+  color:#888;
+  text-align: center;
+  padding:20px;
+  font-style: italic;
+}
+.camp-code { font-weight: bold; color:#f5c842; }
+.join-btn-small {
+  background:#4a8a4a;
+  padding:6px 14px;
+  border-radius:6px;
+  font-size:1rem;
+  width: auto;
+  margin:0;
+}
+.join-btn-small:hover { background:#5aaa5a; }
+.flex-row {
+  display: flex;
+  gap:10px;
+}
+.flex-row input { flex:1; margin-bottom:0; }
+.flex-row button {
+  width: auto;
+  padding:12px 24px;
+  white-space: nowrap;
+}
+.or-divider {
+  color:#666;
+  margin:20px 0 15px;
+  font-size:1rem;
+}
+.hidden { display: none !important; }
+
+/* Paneles que main.js necesita */
+.scroll-panel {
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  gap:14px;
+  width:100%;
+}
+.scroll-panel[data-active="true"] { display:flex; }
+
+#panel-lobby {
+  margin-top:20px;
+  border-top:2px solid #2a4a7a;
+  padding-top:20px;
+  width:100%;
+}
+#player-roster {
+  list-style: none;
+  padding:0;
+  text-align: left;
+  margin:10px 0;
+  width:100%;
+}
+#player-roster li {
+  padding:6px 10px;
+  background:#0f3460;
+  margin-bottom:4px;
+  border-radius:6px;
+}
+#player-roster li.you { color:#f5c842; }
+#lobby-status { color:#aaa; margin:10px 0; }
+#room-code-display { color:#f5c842; letter-spacing:2px; }
+</style>
 </head>
 <body>
 
@@ -179,50 +176,60 @@
     <h1>🏹 ROBIN'S ARENA</h1>
     <p class="subtitle">fast arena deathmatch · 2–4 players</p>
 
-    <!-- Nombre del jugador (siempre visible) -->
-    <input type="text" id="input-name" placeholder="Your callsign" maxlength="12" value="Robin" autofocus />
-
-    <!-- Botones principales -->
-    <button id="btn-host">🏕️ Create a camp</button>
-    <button id="btn-join-open" class="btn-secondary">🔗 Join a camp</button>
-
-    <!-- Sección de camps activos (se muestra al hacer clic en "Join a camp") -->
-    <div id="join-section" class="hidden" style="margin-top:20px;">
-      <div class="flex-row">
-        <button id="btn-refresh-camps" class="btn-secondary" style="flex:1;">↻ Actualizar</button>
-      </div>
-      <ul id="camp-list" class="camp-list">
-        <li class="empty">No hay camps activos</li>
-      </ul>
-
-      <div class="or-divider">— o ingresa un código —</div>
-      <div class="flex-row">
-        <input type="text" id="input-code" placeholder="Código (4 letras)" maxlength="4" autocomplete="off" />
-        <button id="btn-join-confirm">Unirse</button>
-      </div>
-      <button id="btn-join-back" class="back-btn" style="margin-top:15px;">← Volver</button>
+    <!-- PANEL: Nombre -->
+    <div id="panel-name" class="scroll-panel" data-active="true">
+      <input type="text" id="input-name" placeholder="Your callsign" maxlength="12" value="Robin" autofocus/>
+      <button id="btn-continue">Continue →</button>
     </div>
 
-    <!-- Panel de lobby (sala) – se muestra al crear o unirse -->
-    <div id="panel-lobby" class="hidden">
-      <h2>🏕️ Sala</h2>
-      <p>Código: <strong id="room-code-display">----</strong></p>
-      <p id="lobby-status">Esperando jugadores...</p>
+    <!-- PANEL: Elegir acción -->
+    <div id="panel-choice" class="scroll-panel" data-active="false">
+      <button id="btn-host">🏕️ Create a camp</button>
+      <button id="btn-join-open" class="btn-secondary">🔗 Join a camp</button>
+    </div>
+
+    <!-- PANEL: Unirse -->
+    <div id="panel-join" class="scroll-panel" data-active="false">
+      <div class="flex-row">
+        <button id="btn-refresh-camps" class="btn-secondary" style="flex:1;">↻ Refresh camps</button>
+      </div>
+      <ul id="camp-list" class="camp-list">
+        <li class="empty">Scanning for camps…</li>
+      </ul>
+      <div class="or-divider">— or enter a code —</div>
+      <div class="flex-row">
+        <input type="text" id="input-code" placeholder="CODE (4 letters)" maxlength="4" autocomplete="off" />
+        <button id="btn-join-confirm">Join</button>
+      </div>
+      <button id="btn-join-back" class="back-btn">← Back</button>
+    </div>
+
+    <!-- PANEL: Lobby/Sala -->
+    <div id="panel-lobby" class="scroll-panel" data-active="false">
+      <h2>🏕️ Camp</h2>
+      <p>Code: <strong id="room-code-display">----</strong></p>
+      <p id="lobby-status">Waiting for players…</p>
       <ul id="player-roster"></ul>
-      <button id="btn-start-game" class="hidden">⚔️ Iniciar partida</button>
-      <button id="btn-lobby-back" class="back-btn">← Salir</button>
+      <button id="btn-start-game" class="hidden">⚔️ Start hunt</button>
+      <button id="btn-lobby-back" class="back-btn">← Leave</button>
     </div>
 
   </div>
 </div>
 
-<!-- Pantalla de juego (se oculta hasta que empiece) -->
+<!-- Pantalla de juego -->
 <div id="screen-game" class="hidden">
-  <canvas id="game-canvas"></canvas>
-  <div id="weapon-bar"></div>
+  <div class="game-viewport">
+    <canvas id="game-canvas" width="960" height="640"></canvas>
+    <div id="touch-zone-move" class="touch-zone touch-zone--left"></div>
+    <div id="touch-zone-aim" class="touch-zone touch-zone--right"></div>
+    <div id="joystick-move" class="joystick"><div class="joystick-knob"></div></div>
+    <div id="joystick-aim" class="joystick"><div class="joystick-knob"></div></div>
+    <div id="weapon-bar" class="weapon-bar"></div>
+  </div>
 </div>
 
-<!-- Scripts del juego (mismo orden que antes) -->
+<!-- Scripts -->
 <script src="js/engine/camera.js"></script>
 <script src="js/engine/input.js"></script>
 <script src="js/engine/map.js"></script>
