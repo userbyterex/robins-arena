@@ -1,25 +1,22 @@
 /**
- * host-sim.js
- * Única fuente de verdad de la partida. Solo corre en el navegador del host.
- * Recibe inputs de todos (incluido el propio host) y produce snapshots.
+ * host-sim.js — Authoritative simulation (host only).
  */
 const HostSim = (() => {
-  const TICK_RATE = 20; // ticks/seg
-  const MATCH_DURATION = 180; // segundos
+  const TICK_RATE = 20;
+  const MATCH_DURATION = 180;
   const SCORE_TO_WIN = 5;
 
-  let players = new Map();      // id -> player
+  let players = new Map();
   let projectiles = [];
-  let inputs = new Map();       // id -> último input recibido
-  let spawnAssignment = new Map(); // id -> índice de spawn (para respawns)
-  let killfeed = [];            // {killerName, targetName, weaponId, at}
+  let inputs = new Map();
+  let spawnAssignment = new Map();
+  let killfeed = [];
   let matchStartTime = 0;
   let matchOver = false;
   let winnerName = null;
-  let tickEvents = [];           // eventos de ESTE tick, para sonido
+  let tickEvents = [];
 
   function init(playerConfigs) {
-    // playerConfigs: [{id, name, colorIndex, spawnIndex}]
     players = new Map();
     spawnAssignment = new Map();
     playerConfigs.forEach((cfg) => {
@@ -38,13 +35,12 @@ const HostSim = (() => {
     inputs.set(id, input);
   }
 
-  /** Marca a un jugador desconectado como muerto permanente (no respawnea). */
   function markDisconnected(peerId) {
     const p = players.get(peerId);
     if (!p) return;
     p.alive = false;
     p.hp = 0;
-    p.respawnAt = Infinity; // no vuelve
+    p.respawnAt = Infinity;
     inputs.delete(peerId);
   }
 
@@ -57,7 +53,6 @@ const HostSim = (() => {
       const input = inputs.get(player.id);
       if (!input || !player.alive) continue;
 
-      // Movimiento
       const nx = player.x + input.dx * PLAYER_SPEED * dt;
       const ny = player.y + input.dy * PLAYER_SPEED * dt;
       const resolved = GameMap.resolveCircleCollision(nx, ny, PLAYER_RADIUS);
@@ -65,10 +60,8 @@ const HostSim = (() => {
       player.y = resolved.y;
       player.angle = input.angle;
 
-      // Cambio de arma
       if (input.weapon && WEAPONS[input.weapon]) player.weapon = input.weapon;
 
-      // Ataque
       if (input.attack) {
         const weapon = WEAPONS[player.weapon];
         if (now - player.lastAttackAt >= weapon.cooldown) {
@@ -86,15 +79,12 @@ const HostSim = (() => {
       }
     }
 
-    // Proyectiles
     const { survivors, events } = Combat.updateProjectiles(projectiles, Array.from(players.values()), dt);
     projectiles = survivors;
     registerEvents(events);
 
-    // Respawns (solo si respawnAt es finito)
     Combat.processRespawns(Array.from(players.values()), Object.fromEntries(spawnAssignment));
 
-    // Condición de victoria
     for (const p of players.values()) {
       if (p.score >= SCORE_TO_WIN) {
         matchOver = true;
@@ -105,7 +95,7 @@ const HostSim = (() => {
       matchOver = true;
       let best = null;
       for (const p of players.values()) if (!best || p.score > best.score) best = p;
-      winnerName = best ? best.name : "Nadie";
+      winnerName = best ? best.name : "Nobody";
     }
   }
 
