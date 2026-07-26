@@ -1,195 +1,66 @@
-/**
- * game.js — Wires engine, network, combat and HUD.
- */
-const Game = (() => {
-  let canvas, ctx;
-  let isHost = false;
-  let myId = null;
-  let rafId = null;
-  let netIntervalId = null;
-  let lastFrameTime = 0;
-  let currentWeapon = "sword";
-  let running = false;
-  let vignetteGradient = null;
-  let shakeMag = 0;
-  let prevLocalHp = null;
+// game.js - Módulo ES
+import { Player } from './entities/player.js';
+import { Projectile } from './entities/projectile.js';
+import { Map } from './engine/map.js';
+import { Camera } from './engine/camera.js';
 
-  function buildVignette() {
-    const g = ctx.createRadialGradient(
-      canvas.width / 2, canvas.height / 2, canvas.height * 0.35,
-      canvas.width / 2, canvas.height / 2, canvas.height * 0.75
-    );
-    g.addColorStop(0, "rgba(0,0,0,0)");
-    g.addColorStop(1, "rgba(0,0,0,0.45)");
-    return g;
+export class Game {
+  constructor(canvas, network) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.network = network;
+    this.players = new Map(); // id -> Player
+    this.projectiles = [];
+    this.map = new Map();
+    this.camera = new Camera();
+    this.running = false;
+    this.lastTime = 0;
   }
 
-  function playEventFX(events) {
-    for (const ev of events) {
-      if (ev.kind === "melee") { AudioFX.meleeSwing(); }
-      else if (ev.kind === "ranged") { AudioFX.shoot(); Particles.muzzlePuff(ev.x, ev.y); }
-      else if (ev.kind === "hit") { AudioFX.hit(); Particles.hitSpark(ev.x, ev.y); }
-      else if (ev.kind === "death") { AudioFX.death(); Particles.deathBurst(ev.x, ev.y); }
+  start() {
+    this.running = true;
+    this.loop(performance.now());
+  }
+
+  loop(timestamp) {
+    if (!this.running) return;
+    const delta = (timestamp - this.lastTime) / 1000;
+    this.lastTime = timestamp;
+
+    this.update(delta);
+    this.render();
+
+    requestAnimationFrame((t) => this.loop(t));
+  }
+
+  update(delta) {
+    // Actualizar jugadores
+    for (const [id, player] of this.players) {
+      player.update(delta, this.map);
     }
-  }
-
-  function init(payload, hostFlag, localId) {
-    isHost = hostFlag;
-    myId = localId;
-    currentWeapon = "sword";
-    shakeMag = 0;
-    prevLocalHp = null;
-    Particles.clear();
-
-    if (isHost) {
-      HostSim.init(payload.players);
-      Network.onMessage("input", (msg, fromPeerId) => {
-        HostSim.setInput(fromPeerId, msg);
-      });
-      Network.onMessage("peer-left", (msg) => {
-        if (msg && msg.peerId) HostSim.markDisconnected(msg.peerId);
-      });
-    } else {
-      ClientSync.init(playEventFX);
+    // Actualizar proyectiles
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+      p.update(delta);
+      if (p.isDead) this.projectiles.splice(i, 1);
     }
-  }
-
-  function start(canvasEl) {
-    canvas = canvasEl;
-    ctx = canvas.getContext("2d");
-    Camera.setViewport(canvas.width, canvas.height);
-    vignetteGradient = buildVignette();
-    Input.init(canvas);
-    TouchControls.init();
-
-    function selectWeapon(w) {
-      currentWeapon = w;
-      WeaponBar.setActive(w);
-    }
-    Input.onWeaponSelect(selectWeapon);
-    WeaponBar.init(document.getElementById("weapon-bar"), selectWeapon);
-    WeaponBar.setActive(currentWeapon);
-
-    AudioFX.resume();
-
-    running = true;
-    lastFrameTime = performance.now();
-
-    netIntervalId = setInterval(networkTick, 1000 / HostSim.TICK_RATE);
-    rafId = requestAnimationFrame(renderLoop);
-  }
-
-  function stop() {
-    running = false;
-    if (rafId) cancelAnimationFrame(rafId);
-    if (netIntervalId) clearInterval(netIntervalId);
-  }
-
-  function buildLocalInput() {
-    const move = Input.getMoveVector();
-    return {
-      type: "input",
-      dx: move.dx,
-      dy: move.dy,
-      angle: Input.getAimAngle(),
-      attack: Input.isAttacking(),
-      weapon: currentWeapon,
-    };
-  }
-
-  function networkTick() {
-    const input = buildLocalInput();
-    if (isHost) {
-      HostSim.setInput(myId, input);
-      HostSim.tick(1 / HostSim.TICK_RATE);
-      playEventFX(HostSim.getTickEvents());
-      Network.send(HostSim.getSnapshotPayload());
-    } else {
-      Network.send(input);
+    // Detectar colisiones (delegado a combat.js)
+    this.checkCollisions();
+    // Enviar estado local al host (si soy cliente)
+    if (this.network.isClient) {
+      this.network.sendState(this.getLocalPlayer().serialize());
     }
   }
 
-  function renderLoop() {
-    if (!running) return;
-    const now = performance.now();
-    const dt = Math.min(0.1, (now - lastFrameTime) / 1000);
-    lastFrameTime = now;
-
-    let players, projectiles, killfeed, timeLeft, matchOver, winnerName, localPlayer;
-
-    if (isHost) {
-      const state = HostSim.getState();
-      players = state.players;
-      projectiles = state.projectiles;
-      killfeed = state.killfeed;
-      timeLeft = state.timeLeft;
-      matchOver = state.matchOver;
-      winnerName = state.winnerName;
-      localPlayer = players.find((p) => p.id === myId);
-    } else {
-      ClientSync.update();
-      players = ClientSync.getPlayers();
-      projectiles = ClientSync.getProjectiles();
-      killfeed = ClientSync.getKillfeed();
-      timeLeft = ClientSync.getTimeLeft();
-      matchOver = ClientSync.isMatchOver();
-      winnerName = ClientSync.getWinnerName();
-      localPlayer = players.find((p) => p.id === myId);
+  render() {
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.map.draw(this.ctx, this.camera);
+    for (const p of this.projectiles) p.draw(this.ctx, this.camera);
+    for (const [id, player] of this.players) {
+      player.draw(this.ctx, this.camera);
     }
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (!localPlayer) {
-      ctx.fillStyle = "#1a2b1e";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#e8dcc0";
-      ctx.font = "20px VT323, monospace";
-      ctx.textAlign = "center";
-      ctx.fillText("Connecting to camp...", canvas.width / 2, canvas.height / 2);
-      rafId = requestAnimationFrame(renderLoop);
-      return;
-    }
-
-    if (prevLocalHp !== null && localPlayer.hp < prevLocalHp) {
-      shakeMag = Math.min(14, shakeMag + (prevLocalHp - localPlayer.hp) * 0.25 + 4);
-    }
-    prevLocalHp = localPlayer.hp;
-    shakeMag *= 0.9;
-    const shakeX = shakeMag > 0.3 ? (Math.random() - 0.5) * shakeMag : 0;
-    const shakeY = shakeMag > 0.3 ? (Math.random() - 0.5) * shakeMag : 0;
-
-    Camera.follow(localPlayer.x, localPlayer.y);
-    Particles.update(dt);
-    WeaponBar.setActive(localPlayer.weapon);
-
-    ctx.save();
-    ctx.translate(shakeX, shakeY);
-
-    GameMap.draw(ctx, Camera.x, Camera.y, Camera.viewW, Camera.viewH);
-
-    const drawOrder = [...players].sort((a, b) => a.y - b.y);
-    for (const p of drawOrder) {
-      const s = Camera.worldToScreen(p.x, p.y);
-      drawPlayer(ctx, s.x, s.y, p);
-    }
-    for (const proj of projectiles) {
-      const s = Camera.worldToScreen(proj.x, proj.y);
-      drawProjectile(ctx, s.x, s.y, proj);
-    }
-    Particles.draw(ctx, (wx, wy) => Camera.worldToScreen(wx, wy));
-
-    ctx.restore();
-
-    ctx.fillStyle = vignetteGradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    HUD.draw(ctx, {
-      localPlayer, allPlayers: players, killfeed, timeLeft, matchOver, winnerName,
-      viewW: canvas.width, viewH: canvas.height,
-    });
-
-    rafId = requestAnimationFrame(renderLoop);
+    // HUD (se dibuja aparte)
   }
 
-  return { init, start, stop };
-})();
+  // ... más métodos
+}
