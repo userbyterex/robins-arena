@@ -1,7 +1,5 @@
 /**
- * hud.js
- * Todo el HUD se dibuja directamente sobre el canvas del juego, en espacio
- * de pantalla (no de mundo), después de renderizar la arena.
+ * hud.js — CS-style HUD in English, drawn on the game canvas.
  */
 const HUD = (() => {
   const _gradCache = new Map();
@@ -16,7 +14,7 @@ const HUD = (() => {
   function formatTime(sec) {
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
-    return `${m}:${s.toString().padStart(2, "0")}`;
+    return `\( {m}: \){s.toString().padStart(2, "0")}`;
   }
 
   function panel(ctx, x, y, w, h, r = 6) {
@@ -29,12 +27,31 @@ const HUD = (() => {
     ctx.closePath();
   }
 
+  function drawCrosshair(ctx, viewW, viewH) {
+    const cx = viewW / 2;
+    const cy = viewH / 2;
+    const gap = 5;
+    const len = 10;
+    ctx.save();
+    ctx.strokeStyle = "rgba(232,220,192,0.9)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - gap - len, cy); ctx.lineTo(cx - gap, cy);
+    ctx.moveTo(cx + gap, cy); ctx.lineTo(cx + gap + len, cy);
+    ctx.moveTo(cx, cy - gap - len); ctx.lineTo(cx, cy - gap);
+    ctx.moveTo(cx, cy + gap); ctx.lineTo(cx, cy + gap + len);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(201,162,39,0.85)";
+    ctx.fillRect(cx - 1, cy - 1, 2, 2);
+    ctx.restore();
+  }
+
   function draw(ctx, { localPlayer, allPlayers, killfeed, timeLeft, matchOver, winnerName, viewW, viewH }) {
     ctx.save();
     ctx.font = "18px VT323, monospace";
     ctx.shadowColor = "rgba(0,0,0,0.6)";
 
-    // --- Vida + arma (arriba-izquierda, panel de pergamino) ---
+    // HP + weapon (top-left)
     if (localPlayer) {
       ctx.shadowBlur = 0;
       const grad = cachedPanelGradient(ctx, "hpPanel", 14, 14, 14, 96, [
@@ -75,7 +92,7 @@ const HUD = (() => {
       ctx.shadowBlur = 0;
     }
 
-    // --- Cronómetro (arriba centro) ---
+    // Timer (top center)
     ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 4;
     const timeGrad = cachedPanelGradient(ctx, "timePanel", 0, 0, 0, 44, [
       [0, "rgba(36,31,26,0.82)"], [1, "rgba(36,31,26,0.5)"],
@@ -92,7 +109,7 @@ const HUD = (() => {
     ctx.fillText(formatTime(Math.ceil(timeLeft)), viewW / 2, 38);
     ctx.shadowBlur = 0;
 
-    // --- Marcador (arriba-derecha) ---
+    // Scoreboard (top-right)
     const sorted = [...allPlayers].sort((a, b) => b.score - a.score);
     const scoreH = sorted.length * 22 + 12;
     const scoreGrad = cachedPanelGradient(ctx, `scorePanel${scoreH}`, 0, 10, 0, 10 + scoreH, [
@@ -111,14 +128,14 @@ const HUD = (() => {
       ctx.fillText(`${p.name}  ${p.score}`, viewW - 24, 30 + i * 22);
     });
 
-    // --- Kill feed (debajo del marcador) ---
+    // Kill feed
     ctx.font = "15px VT323, monospace";
     killfeed.slice(0, 4).forEach((k, i) => {
       const weapon = WEAPONS[k.weaponId];
       const age = performance.now() / 1000 - k.at;
       ctx.globalAlpha = Math.max(0.35, 1 - age / 6);
       ctx.fillStyle = "#241f1a";
-      const text = `${k.killerName} abatió a ${k.targetName} ${weapon.icon}`;
+      const text = `${k.killerName} killed ${k.targetName} ${weapon.icon}`;
       const tw = ctx.measureText(text).width;
       panel(ctx, viewW - 24 - tw - 12, 18 + scoreH + i * 22, tw + 16, 20, 4);
       ctx.globalAlpha *= 0.55;
@@ -129,7 +146,12 @@ const HUD = (() => {
     });
     ctx.globalAlpha = 1;
 
-    // --- Pantalla de victoria ---
+    // Crosshair (CS-style)
+    if (localPlayer && localPlayer.alive && !matchOver) {
+      drawCrosshair(ctx, viewW, viewH);
+    }
+
+    // Victory screen
     if (matchOver) {
       ctx.fillStyle = "rgba(15,26,18,0.86)";
       ctx.fillRect(0, 0, viewW, viewH);
@@ -137,14 +159,14 @@ const HUD = (() => {
       ctx.shadowColor = "rgba(201,162,39,0.6)"; ctx.shadowBlur = 18;
       ctx.font = "44px Cinzel, serif";
       ctx.fillStyle = "#e8b13a";
-      ctx.fillText("Fin de la cacería", viewW / 2, viewH / 2 - 30);
+      ctx.fillText("MATCH OVER", viewW / 2, viewH / 2 - 30);
       ctx.shadowBlur = 0;
       ctx.font = "26px VT323, monospace";
       ctx.fillStyle = "#e8dcc0";
-      ctx.fillText(`${winnerName} se alza victorioso`, viewW / 2, viewH / 2 + 14);
+      ctx.fillText(`${winnerName} wins the round`, viewW / 2, viewH / 2 + 14);
       ctx.font = "18px VT323, monospace";
       ctx.fillStyle = "#e8dcc0aa";
-      ctx.fillText("Recarga la página para jugar de nuevo", viewW / 2, viewH / 2 + 50);
+      ctx.fillText("Reload the page to play again", viewW / 2, viewH / 2 + 50);
     }
 
     ctx.restore();
