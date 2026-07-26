@@ -24,7 +24,6 @@ html,body{
   overflow-x:hidden;
 }
 
-/* subtle canvas texture via repeating noise-like gradient */
 body::before{
   content:"";
   position:fixed; inset:0;
@@ -62,13 +61,11 @@ body::before{
   text-align:center;
 }
 
-/* ---------- scroll / parchment panel ---------- */
 .scroll{
   position:relative;
   width:min(420px, 90vw);
   min-height:280px;
-  background:
-    linear-gradient(180deg, var(--parchment) 0%, var(--parchment-dark) 100%);
+  background: linear-gradient(180deg, var(--parchment) 0%, var(--parchment-dark) 100%);
   color:var(--charcoal);
   border-radius:6px;
   padding:34px 28px;
@@ -118,7 +115,6 @@ body::before{
 .parchment-input:focus{ border-color:var(--gold); background:rgba(255,255,255,0.55); }
 .parchment-input::placeholder{ color:rgba(36,31,26,0.45); text-transform:uppercase; }
 
-/* ---------- wax seal buttons ---------- */
 .wax-seal{
   width:100%;
   font-family:'Cinzel', serif;
@@ -155,7 +151,6 @@ body::before{
 }
 .link-back:hover{ opacity:1; }
 
-/* ---------- wax stamp room code ---------- */
 .wax-stamp{
   width:104px; height:104px;
   margin:6px auto 2px auto;
@@ -170,7 +165,6 @@ body::before{
   color:var(--parchment);
 }
 
-/* ---------- roster ---------- */
 .roster{
   list-style:none;
   padding:0; margin:6px 0;
@@ -185,9 +179,66 @@ body::before{
   border-left:3px solid var(--wine);
   border-radius:2px;
 }
-.roster li.you::after{ content:" (tú)"; opacity:0.6; font-size:0.9rem; }
+.roster li.you::after{ content:" (you)"; opacity:0.6; font-size:0.9rem; }
 
-/* ---------- ambient torches ---------- */
+/* Camp browser list */
+.camp-list-header{
+  width:100%;
+  display:flex; align-items:center; justify-content:space-between;
+  font-family:'Cinzel', serif;
+  font-size:0.95rem;
+  color:var(--wine-dark);
+  font-weight:700;
+}
+.btn-refresh{
+  background:rgba(122,31,43,0.12);
+  border:1px solid var(--wine-dark);
+  border-radius:50%;
+  width:36px; height:36px;
+  font-size:1.2rem;
+  cursor:pointer;
+  color:var(--wine-dark);
+  line-height:1;
+}
+.btn-refresh:hover{ background:rgba(122,31,43,0.22); }
+
+.camp-list{
+  list-style:none;
+  padding:0; margin:0;
+  width:100%;
+  max-height:160px;
+  overflow-y:auto;
+  display:flex; flex-direction:column; gap:6px;
+}
+.camp-list li{
+  font-family:'VT323', monospace;
+  font-size:1.1rem;
+  padding:10px 12px;
+  background:rgba(122,31,43,0.1);
+  border:1px solid rgba(122,31,43,0.25);
+  border-radius:4px;
+  cursor:pointer;
+  display:flex; justify-content:space-between; align-items:center;
+  transition:background 0.1s;
+}
+.camp-list li:hover:not(.camp-list-empty){
+  background:rgba(122,31,43,0.2);
+  border-color:var(--gold);
+}
+.camp-list li.camp-list-empty{
+  cursor:default;
+  opacity:0.65;
+  justify-content:center;
+  border-style:dashed;
+}
+.camp-list .camp-code{
+  font-family:'Cinzel', serif;
+  font-weight:700;
+  letter-spacing:0.08em;
+  color:var(--wine-dark);
+}
+.camp-list .camp-meta{ opacity:0.7; font-size:0.95rem; }
+
 .torch{
   position:fixed; top:12%; width:6px; height:90px;
   background:linear-gradient(180deg, transparent, var(--gold) 40%, var(--wine) 100%);
@@ -208,6 +259,8 @@ body::before{
   font-size:0.95rem;
   opacity:0.4;
   letter-spacing:0.03em;
+  text-align:center;
+  max-width:90vw;
 }
 
 @media (prefers-reduced-motion: reduce){
@@ -215,7 +268,6 @@ body::before{
   .wax-seal{ transition:none; }
 }
 
-/* keyboard focus visibility */
 button:focus-visible, input:focus-visible{
   outline:3px solid var(--gold);
   outline-offset:2px;
