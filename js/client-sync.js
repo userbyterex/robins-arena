@@ -7,6 +7,8 @@
 const ClientSync = (() => {
   let latest = null;
   const rendered = new Map(); // id -> {x,y} posición suavizada actual
+  // Si la posición salta más de esto (p.ej. respawn), se teletransporta en vez de interpolar.
+  const SNAP_DISTANCE = 80;
 
   function init(onEvents) {
     Network.onMessage("snapshot", (msg) => {
@@ -20,10 +22,22 @@ const ClientSync = (() => {
   function update() {
     if (!latest) return;
     for (const p of latest.players) {
-      const r = rendered.get(p.id) || { x: p.x, y: p.y };
-      r.x += (p.x - r.x) * 0.35;
-      r.y += (p.y - r.y) * 0.35;
-      rendered.set(p.id, r);
+      let r = rendered.get(p.id);
+      if (!r) {
+        r = { x: p.x, y: p.y };
+        rendered.set(p.id, r);
+        continue;
+      }
+      const dx = p.x - r.x;
+      const dy = p.y - r.y;
+      // Respawn u otro salto grande: no interpolar (evita deslizarse por el mapa).
+      if (dx * dx + dy * dy > SNAP_DISTANCE * SNAP_DISTANCE) {
+        r.x = p.x;
+        r.y = p.y;
+      } else {
+        r.x += dx * 0.35;
+        r.y += dy * 0.35;
+      }
     }
   }
 
