@@ -1,7 +1,5 @@
 /**
- * game.js
- * Une motor, red, combate y HUD. Expone Game.init(payload, isHost, myId) y
- * Game.start(canvas), llamado desde main.js cuando arranca la partida.
+ * game.js — Wires engine, network, combat and HUD.
  */
 const Game = (() => {
   let canvas, ctx;
@@ -13,6 +11,8 @@ const Game = (() => {
   let currentWeapon = "sword";
   let running = false;
   let vignetteGradient = null;
+  let shakeMag = 0;
+  let prevLocalHp = null;
 
   function buildVignette() {
     const g = ctx.createRadialGradient(
@@ -23,9 +23,6 @@ const Game = (() => {
     g.addColorStop(1, "rgba(0,0,0,0.45)");
     return g;
   }
-
-  let shakeMag = 0;
-  let prevLocalHp = null;
 
   function playEventFX(events) {
     for (const ev of events) {
@@ -78,9 +75,7 @@ const Game = (() => {
     running = true;
     lastFrameTime = performance.now();
 
-    // Loop de red: recoge input local, lo envía o lo aplica directo si somos host.
     netIntervalId = setInterval(networkTick, 1000 / HostSim.TICK_RATE);
-    // Loop de render: 60fps vía rAF.
     rafId = requestAnimationFrame(renderLoop);
   }
 
@@ -150,12 +145,11 @@ const Game = (() => {
       ctx.fillStyle = "#e8dcc0";
       ctx.font = "20px VT323, monospace";
       ctx.textAlign = "center";
-      ctx.fillText("Conectando con el campamento...", canvas.width / 2, canvas.height / 2);
+      ctx.fillText("Connecting to camp...", canvas.width / 2, canvas.height / 2);
       rafId = requestAnimationFrame(renderLoop);
       return;
     }
 
-    // Screen shake al recibir daño el jugador local.
     if (prevLocalHp !== null && localPlayer.hp < prevLocalHp) {
       shakeMag = Math.min(14, shakeMag + (prevLocalHp - localPlayer.hp) * 0.25 + 4);
     }
@@ -173,7 +167,7 @@ const Game = (() => {
 
     GameMap.draw(ctx, Camera.x, Camera.y, Camera.viewW, Camera.viewH);
 
-    const drawOrder = [...players].sort((a, b) => a.y - b.y); // pseudo-profundidad
+    const drawOrder = [...players].sort((a, b) => a.y - b.y);
     for (const p of drawOrder) {
       const s = Camera.worldToScreen(p.x, p.y);
       drawPlayer(ctx, s.x, s.y, p);
