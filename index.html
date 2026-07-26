@@ -1,122 +1,89 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Robin's Arena</title>
-<script>
-  window.addEventListener("error", (e) => showFatalError(e.message, e.filename, e.lineno));
-  window.addEventListener("unhandledrejection", (e) => showFatalError(String(e.reason)));
-  function showFatalError(msg, file, line) {
-    let box = document.getElementById("fatal-error-box");
-    if (!box) {
-      box = document.createElement("div");
-      box.id = "fatal-error-box";
-      box.style.cssText = "position:fixed;inset:0;z-index:99999;background:#0d1a12;color:#e8dcc0;" +
-        "font:14px monospace;padding:16px;overflow:auto;white-space:pre-wrap;";
-      document.body.appendChild(box);
-    }
-    const line2 = document.createElement("div");
-    line2.style.marginBottom = "10px";
-    line2.style.borderBottom = "1px solid rgba(255,255,255,0.2)";
-    line2.style.paddingBottom = "10px";
-    line2.textContent = "ERROR: " + msg + (file ? `\n  in \( {file.split("/").pop()}: \){line}` : "");
-    box.appendChild(line2);
-  }
-</script>
-<link rel="stylesheet" href="css/style.css">
-<link rel="stylesheet" href="css/hud.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Robin's Arena</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/hud.css" />
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 
-  <!-- ============ GAME SCREEN ============ -->
-  <div id="screen-game" class="game-screen" hidden>
-    <div class="game-viewport">
-      <canvas id="game-canvas" width="960" height="640"></canvas>
-      <div id="touch-zone-move" class="touch-zone touch-zone--left">
-        <div class="joystick" id="joystick-move"><div class="joystick-knob"></div></div>
+  <!-- ===== PANTALLA DE LOBBY ===== -->
+  <div id="screen-lobby">
+    <div class="lobby-container">
+
+      <!-- Panel: Nombre -->
+      <div id="panel-name" class="panel" data-active="true">
+        <h1>🏹 ROBIN'S ARENA</h1>
+        <p class="subtitle">fast arena deathmatch · 2–4 players · free to play</p>
+        <input type="text" id="input-name" placeholder="Enter your callsign" maxlength="12" autofocus />
+        <button id="btn-continue">Continue</button>
       </div>
-      <div id="touch-zone-aim" class="touch-zone touch-zone--right">
-        <div class="joystick" id="joystick-aim"><div class="joystick-knob"></div></div>
+
+      <!-- Panel: Elegir acción -->
+      <div id="panel-choice" class="panel" data-active="false">
+        <h2>Choose an action</h2>
+        <div class="choice-buttons">
+          <button id="btn-host">🏕️ Create Camp</button>
+          <button id="btn-join-open">🔗 Join Camp</button>
+        </div>
       </div>
-      <div id="weapon-bar" class="weapon-bar"></div>
+
+      <!-- Panel: Unirse con código / lista de camps -->
+      <div id="panel-join" class="panel" data-active="false">
+        <h2>Join a camp</h2>
+        <button id="btn-refresh-camps" class="refresh-btn">↻ Open camps</button>
+        <ul id="camp-list">
+          <li class="camp-list-empty">Scanning for camps…</li>
+        </ul>
+        <p class="or-divider">— or enter a code —</p>
+        <input type="text" id="input-code" placeholder="4-letter code" maxlength="4" autocomplete="off" />
+        <button id="btn-join-confirm">Join with code</button>
+        <button id="btn-join-back" class="back-btn">← back</button>
+      </div>
+
+      <!-- Panel: Lobby (sala) -->
+      <div id="panel-lobby" class="panel" data-active="false">
+        <h2>🏕️ Camp lobby</h2>
+        <p>Code: <strong id="room-code-display">----</strong></p>
+        <p id="lobby-status">Waiting for players…</p>
+        <ul id="player-roster"></ul>
+        <button id="btn-start-game" hidden>⚔️ Start Match</button>
+        <button id="btn-lobby-back" class="back-btn">← leave</button>
+      </div>
+
     </div>
   </div>
 
-  <!-- ============ LOBBY ============ -->
-  <div id="screen-lobby">
-    <div class="torch torch-left"></div>
-    <div class="torch torch-right"></div>
-
-    <main class="stage">
-      <h1 class="carved-title">ROBIN'S ARENA</h1>
-      <p class="subtitle">fast arena deathmatch · 2–4 players · free to play</p>
-
-      <section class="scroll" id="scroll-menu">
-
-        <!-- Name -->
-        <div class="scroll-panel" id="panel-name" data-active="true">
-          <p class="scroll-label">Enter your callsign</p>
-          <input type="text" id="input-name" class="parchment-input" placeholder="Player name" maxlength="14" autocomplete="off">
-          <button class="wax-seal" id="btn-continue">Continue</button>
-        </div>
-
-        <!-- Create or Join -->
-        <div class="scroll-panel" id="panel-choice" data-active="false">
-          <p class="scroll-label">Choose an action</p>
-          <button class="wax-seal" id="btn-host">Create Camp</button>
-          <button class="wax-seal wax-seal--secondary" id="btn-join-open">Join Camp</button>
-        </div>
-
-        <!-- Join: list + code -->
-        <div class="scroll-panel" id="panel-join" data-active="false">
-          <p class="scroll-label">Join a camp</p>
-          <div class="camp-list-header">
-            <span>Open camps</span>
-            <button type="button" class="btn-refresh" id="btn-refresh-camps" title="Refresh">↻</button>
-          </div>
-          <ul class="camp-list" id="camp-list">
-            <li class="camp-list-empty">Scanning…</li>
-          </ul>
-          <p class="scroll-hint" style="margin-top:8px">Or enter a code</p>
-          <input type="text" id="input-code" class="parchment-input" placeholder="XXXX" maxlength="4" autocapitalize="characters" autocomplete="off">
-          <button class="wax-seal" id="btn-join-confirm">Join with code</button>
-          <button class="link-back" id="btn-join-back">&larr; back</button>
-        </div>
-
-        <!-- Waiting room -->
-        <div class="scroll-panel" id="panel-lobby" data-active="false">
-          <p class="scroll-label">Camp lobby</p>
-          <div class="wax-stamp" id="room-code-display">----</div>
-          <p class="scroll-hint" id="lobby-status">Waiting for players…</p>
-          <ul class="roster" id="player-roster"></ul>
-          <button class="wax-seal" id="btn-start-game" disabled>Start Match</button>
-          <button class="link-back" id="btn-lobby-back">&larr; leave</button>
-        </div>
-
-      </section>
-
-      <p class="footer-note">WASD move · mouse aim · click shoot · 1–5 weapons · first to 5 kills</p>
-    </main>
+  <!-- ===== PANTALLA DE JUEGO ===== -->
+  <div id="screen-game" hidden>
+    <canvas id="game-canvas"></canvas>
+    <div id="weapon-bar"></div>
   </div>
 
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <script src="js/network.js"></script>
-  <script src="js/engine/map.js"></script>
+  <!-- ===== SCRIPTS DEL JUEGO (orden necesario) ===== -->
   <script src="js/engine/camera.js"></script>
   <script src="js/engine/input.js"></script>
+  <script src="js/engine/map.js"></script>
   <script src="js/engine/touch-controls.js"></script>
+
   <script src="js/entities/weapons.js"></script>
   <script src="js/entities/player.js"></script>
   <script src="js/entities/projectile.js"></script>
+
+  <script src="js/audio.js"></script>
+  <script src="js/particles.js"></script>
   <script src="js/combat.js"></script>
   <script src="js/host-sim.js"></script>
   <script src="js/client-sync.js"></script>
+  <script src="js/network.js"></script>
   <script src="js/hud.js"></script>
   <script src="js/ui-weapon-bar.js"></script>
-  <script src="js/audio.js"></script>
-  <script src="js/particles.js"></script>
   <script src="js/game.js"></script>
   <script src="js/main.js"></script>
+
 </body>
 </html>
