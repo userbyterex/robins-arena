@@ -1,44 +1,25 @@
 /**
- * network.js
- * Capa de red peer-to-peer para Robin's Arena, usando PeerJS (WebRTC).
- * No requiere backend propio: usa el servidor de señalización público y
- * gratuito de PeerJS solo para el "apretón de manos" inicial. Una vez
- * conectados, los datos viajan directo entre navegadores.
- *
- * Protocolo de sala:
- *  - El anfitrión (host) crea un Peer con id "ra-<CODIGO>".
- *  - Los demás jugadores se conectan directamente a ese id usando el código.
- *  - El host es la autoridad de la sala: mantiene el roster y lo retransmite.
- *
- * Este archivo expone un objeto global `Network` con:
- *   Network.hostRoom(name, callbacks)
- *   Network.joinRoom(code, name, callbacks)
- *   Network.startGame(payload)
- *   Network.leaveRoom()
- *   Network.MAX_PLAYERS
+ * network.js — PeerJS P2P layer for Robin's Arena.
+ * Host creates peer id "ra-<CODE>". Clients connect with that code.
+ * Room browser uses PeerJS listAllPeers when available.
  */
-
 const Network = (() => {
   const MAX_PLAYERS = 4;
-  const ID_PREFIX = "ra-"; // Robin's Arena
+  const ID_PREFIX = "ra-";
   const JOIN_TIMEOUT_MS = 12000;
 
   let peer = null;
   let isHost = false;
   let myName = "";
   let myId = null;
-
-  // Solo usado por el host: conexiones activas -> {conn, name}
   const hostConnections = new Map();
-  // Roster compartido: peerId -> name (incluye al host)
   let roster = new Map();
-
-  // Solo usado por el cliente: conexión hacia el host
   let hostConn = null;
   let joinTimeoutId = null;
-
   let callbacks = {};
-  const messageHandlers = {}; // type -> fn(msg, fromPeerId)
+  const messageHandlers = {};
+  // Lightweight discovery peer used only to list open camps
+  let discoverPeer = null;
 
   function onMessage(type, handler) {
     messageHandlers[type] = handler;
@@ -46,15 +27,13 @@ const Network = (() => {
 
   function ensurePeerJS() {
     if (typeof Peer === "undefined") {
-      const err = new Error("PeerJS no cargó. Revisa tu conexión o desactiva bloqueadores.");
+      const err = new Error("PeerJS failed to load. Check connection or disable blockers.");
       callbacks.onError && callbacks.onError(err);
       return false;
     }
     return true;
   }
 
-  // Host: difunde a todos los clientes. Cliente: envía al host.
-  // Se usa tanto para 'input' (cliente->host) como 'snapshot' (host->clientes).
   function send(msg) {
     if (isHost) {
       hostConnections.forEach(({ conn }) => {
@@ -66,7 +45,7 @@ const Network = (() => {
   }
 
   function randomCode() {
-    const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // sin I/O para evitar confusión
+    const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     let code = "";
     for (let i = 0; i < 4; i++) code += letters[Math.floor(Math.random() * letters.length)];
     return code;
@@ -88,9 +67,18 @@ const Network = (() => {
           conn.close();
           return;
         }
-        roster.set(conn.peer, msg.name || "Forajido");
+        roster.set(conn.peer, msg.name || "Player");
         hostConnections.set(conn.peer, { conn, name: msg.name });
         broadcastRoster();
+      } else if (msg.type === "ping-info") {
+        // Client asking for room info (name + count)
+        conn.send({
+          type: "room-info",
+          code: myId ? myId.replace(ID_PREFIX, "") : "????",
+          hostName: myName,
+          players: roster.size,
+          max: MAX_PLAYERS,
+        });
       } else if (messageHandlers[msg.type]) {
         messageHandlers[msg.type](msg, conn.peer);
       }
@@ -99,7 +87,6 @@ const Network = (() => {
       roster.delete(conn.peer);
       hostConnections.delete(conn.peer);
       broadcastRoster();
-      // Avisa a la simulación si la partida ya empezó.
       if (messageHandlers["peer-left"]) {
         messageHandlers["peer-left"]({ type: "peer-left", peerId: conn.peer });
       }
@@ -134,7 +121,7 @@ const Network = (() => {
     peer.on("error", (err) => {
       let msg = err && err.message ? err.message : String(err);
       if (err && err.type === "unavailable-id") {
-        msg = "Ese código de sala ya está en uso. Intenta de nuevo.";
+        msg = "That camp code is already taken. Try again.";
       }
       callbacks.onError && callbacks.onError(new Error(msg));
     });
@@ -146,7 +133,6 @@ const Network = (() => {
     myName = name;
 
     if (!ensurePeerJS()) return;
-
     if (joinTimeoutId) clearTimeout(joinTimeoutId);
 
     peer = new Peer({ debug: 0 });
@@ -160,7 +146,7 @@ const Network = (() => {
       joinTimeoutId = setTimeout(() => {
         if (!conn.open) {
           callbacks.onError && callbacks.onError(
-            new Error("No se pudo conectar. ¿El código es correcto y el anfitrión sigue en la sala?")
+            new Error("Could not connect. Is the code correct and is the host still in the camp?")
           );
           try { conn.close(); } catch (e) {}
         }
@@ -179,7 +165,7 @@ const Network = (() => {
         if (msg.type === "roster") {
           callbacks.onRosterUpdate && callbacks.onRosterUpdate(msg.list);
         } else if (msg.type === "room-full") {
-          callbacks.onError && callbacks.onError(new Error("La sala ya tiene 4 forajidos."));
+          callbacks.onError && callbacks.onError(new Error("This camp is full (4 players)."));
         } else if (msg.type === "start") {
           callbacks.onStartGame && callbacks.onStartGame(msg.payload);
         } else if (messageHandlers[msg.type]) {
@@ -199,9 +185,71 @@ const Network = (() => {
     peer.on("error", (err) => {
       let msg = err && err.message ? err.message : String(err);
       if (err && (err.type === "peer-unavailable" || err.type === "network")) {
-        msg = "Campamento no encontrado. Revisa el código o pide al anfitrión que lo funde de nuevo.";
+        msg = "Camp not found. Check the code or ask the host to create it again.";
       }
       callbacks.onError && callbacks.onError(new Error(msg));
+    });
+  }
+
+  /**
+   * Discover open camps via PeerJS listAllPeers (when supported).
+   * Returns promise of [{ code, id }].
+   */
+  function listOpenCamps() {
+    return new Promise((resolve) => {
+      if (typeof Peer === "undefined") {
+        resolve([]);
+        return;
+      }
+
+      const finish = (list) => {
+        resolve(list);
+      };
+
+      const runList = (p) => {
+        if (typeof p.listAllPeers !== "function") {
+          finish([]);
+          return;
+        }
+        try {
+          p.listAllPeers((all) => {
+            const camps = (all || [])
+              .filter((id) => typeof id === "string" && id.startsWith(ID_PREFIX) && id.length === ID_PREFIX.length + 4)
+              .map((id) => ({
+                id,
+                code: id.slice(ID_PREFIX.length).toUpperCase(),
+              }));
+            finish(camps);
+          });
+        } catch (e) {
+          finish([]);
+        }
+      };
+
+      if (peer && peer.open) {
+        runList(peer);
+        return;
+      }
+
+      if (discoverPeer && discoverPeer.open) {
+        runList(discoverPeer);
+        return;
+      }
+
+      try {
+        discoverPeer = new Peer({ debug: 0 });
+        const t = setTimeout(() => finish([]), 6000);
+        discoverPeer.on("open", () => {
+          clearTimeout(t);
+          runList(discoverPeer);
+        });
+        discoverPeer.on("error", () => {
+          clearTimeout(t);
+          finish([]);
+        });
+      } catch (e) {
+        finish([]);
+      }
     });
   }
 
@@ -218,9 +266,7 @@ const Network = (() => {
       clearTimeout(joinTimeoutId);
       joinTimeoutId = null;
     }
-    if (peer) {
-      peer.destroy();
-    }
+    if (peer) peer.destroy();
     peer = null;
     hostConn = null;
     hostConnections.clear();
@@ -228,13 +274,8 @@ const Network = (() => {
     isHost = false;
   }
 
-  function getMyId() {
-    return myId;
-  }
-
-  function getIsHost() {
-    return isHost;
-  }
+  function getMyId() { return myId; }
+  function getIsHost() { return isHost; }
 
   return {
     MAX_PLAYERS,
@@ -246,5 +287,6 @@ const Network = (() => {
     getIsHost,
     onMessage,
     send,
+    listOpenCamps,
   };
 })();
