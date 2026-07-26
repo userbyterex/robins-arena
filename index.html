@@ -1,12 +1,10 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Robin's Arena</title>
 <script>
-  // Cartel de error visible en pantalla: útil para depurar en celular,
-  // donde no hay acceso fácil a la consola del navegador.
   window.addEventListener("error", (e) => showFatalError(e.message, e.filename, e.lineno));
   window.addEventListener("unhandledrejection", (e) => showFatalError(String(e.reason)));
   function showFatalError(msg, file, line) {
@@ -14,15 +12,15 @@
     if (!box) {
       box = document.createElement("div");
       box.id = "fatal-error-box";
-      box.style.cssText = "position:fixed;inset:0;z-index:99999;background:#3a0d0d;color:#fff;" +
+      box.style.cssText = "position:fixed;inset:0;z-index:99999;background:#0d1a12;color:#e8dcc0;" +
         "font:14px monospace;padding:16px;overflow:auto;white-space:pre-wrap;";
       document.body.appendChild(box);
     }
     const line2 = document.createElement("div");
     line2.style.marginBottom = "10px";
-    line2.style.borderBottom = "1px solid rgba(255,255,255,0.3)";
+    line2.style.borderBottom = "1px solid rgba(255,255,255,0.2)";
     line2.style.paddingBottom = "10px";
-    line2.textContent = "ERROR: " + msg + (file ? `\n  en ${file.split("/").pop()}:${line}` : "");
+    line2.textContent = "ERROR: " + msg + (file ? `\n  in \( {file.split("/").pop()}: \){line}` : "");
     box.appendChild(line2);
   }
 </script>
@@ -31,74 +29,76 @@
 </head>
 <body>
 
-  <!-- ============ PANTALLA DE JUEGO ============ -->
+  <!-- ============ GAME SCREEN ============ -->
   <div id="screen-game" class="game-screen" hidden>
     <div class="game-viewport">
       <canvas id="game-canvas" width="960" height="640"></canvas>
-
-      <!-- Zonas táctiles: izquierda mueve, derecha apunta y ataca. Ocultas en PC. -->
       <div id="touch-zone-move" class="touch-zone touch-zone--left">
         <div class="joystick" id="joystick-move"><div class="joystick-knob"></div></div>
       </div>
       <div id="touch-zone-aim" class="touch-zone touch-zone--right">
         <div class="joystick" id="joystick-aim"><div class="joystick-knob"></div></div>
       </div>
-
-      <!-- Barra de armas: botones reales, funcionan con tap y con clic. -->
       <div id="weapon-bar" class="weapon-bar"></div>
     </div>
   </div>
 
-  <!-- ============ PANTALLA DE LOBBY ============ -->
+  <!-- ============ LOBBY ============ -->
   <div id="screen-lobby">
+    <div class="torch torch-left"></div>
+    <div class="torch torch-right"></div>
 
-  <div class="torch torch-left"></div>
-  <div class="torch torch-right"></div>
+    <main class="stage">
+      <h1 class="carved-title">ROBIN'S ARENA</h1>
+      <p class="subtitle">fast arena deathmatch · 2–4 players · free to play</p>
 
-  <main class="stage">
-    <h1 class="carved-title">ROBIN'S ARENA</h1>
-    <p class="subtitle">arcos &middot; ballestas &middot; espadas &middot; hachas &middot; 4 jugadores</p>
+      <section class="scroll" id="scroll-menu">
 
-    <section class="scroll" id="scroll-menu">
+        <!-- Name -->
+        <div class="scroll-panel" id="panel-name" data-active="true">
+          <p class="scroll-label">Enter your callsign</p>
+          <input type="text" id="input-name" class="parchment-input" placeholder="Player name" maxlength="14" autocomplete="off">
+          <button class="wax-seal" id="btn-continue">Continue</button>
+        </div>
 
-      <!-- Pantalla: elegir nombre -->
-      <div class="scroll-panel" id="panel-name" data-active="true">
-        <p class="scroll-label">Se busca a un forajido</p>
-        <input type="text" id="input-name" class="parchment-input" placeholder="Tu nombre" maxlength="14">
-        <button class="wax-seal" id="btn-continue">Sellar</button>
-      </div>
+        <!-- Create or Join -->
+        <div class="scroll-panel" id="panel-choice" data-active="false">
+          <p class="scroll-label">Choose an action</p>
+          <button class="wax-seal" id="btn-host">Create Camp</button>
+          <button class="wax-seal wax-seal--secondary" id="btn-join-open">Join Camp</button>
+        </div>
 
-      <!-- Pantalla: crear o unirse -->
-      <div class="scroll-panel" id="panel-choice" data-active="false">
-        <p class="scroll-label">¿Fundar un campamento o unirte a uno?</p>
-        <button class="wax-seal" id="btn-host">Fundar campamento</button>
-        <button class="wax-seal wax-seal--secondary" id="btn-join-open">Unirme con código</button>
-      </div>
+        <!-- Join: list + code -->
+        <div class="scroll-panel" id="panel-join" data-active="false">
+          <p class="scroll-label">Join a camp</p>
+          <div class="camp-list-header">
+            <span>Open camps</span>
+            <button type="button" class="btn-refresh" id="btn-refresh-camps" title="Refresh">↻</button>
+          </div>
+          <ul class="camp-list" id="camp-list">
+            <li class="camp-list-empty">Scanning…</li>
+          </ul>
+          <p class="scroll-hint" style="margin-top:8px">Or enter a code</p>
+          <input type="text" id="input-code" class="parchment-input" placeholder="XXXX" maxlength="4" autocapitalize="characters" autocomplete="off">
+          <button class="wax-seal" id="btn-join-confirm">Join with code</button>
+          <button class="link-back" id="btn-join-back">&larr; back</button>
+        </div>
 
-      <!-- Pantalla: unirse con código -->
-      <div class="scroll-panel" id="panel-join" data-active="false">
-        <p class="scroll-label">Código del campamento</p>
-        <input type="text" id="input-code" class="parchment-input" placeholder="XXXX" maxlength="4" autocapitalize="characters">
-        <button class="wax-seal" id="btn-join-confirm">Entrar</button>
-        <button class="link-back" id="btn-join-back">&larr; volver</button>
-      </div>
+        <!-- Waiting room -->
+        <div class="scroll-panel" id="panel-lobby" data-active="false">
+          <p class="scroll-label">Camp lobby</p>
+          <div class="wax-stamp" id="room-code-display">----</div>
+          <p class="scroll-hint" id="lobby-status">Waiting for players…</p>
+          <ul class="roster" id="player-roster"></ul>
+          <button class="wax-seal" id="btn-start-game" disabled>Start Match</button>
+          <button class="link-back" id="btn-lobby-back">&larr; leave</button>
+        </div>
 
-      <!-- Pantalla: sala de espera -->
-      <div class="scroll-panel" id="panel-lobby" data-active="false">
-        <p class="scroll-label">Campamento</p>
-        <div class="wax-stamp" id="room-code-display">----</div>
-        <p class="scroll-hint" id="lobby-status">Esperando forajidos&hellip;</p>
-        <ul class="roster" id="player-roster"></ul>
-        <button class="wax-seal" id="btn-start-game" disabled>Comenzar la cacería</button>
-        <button class="link-back" id="btn-lobby-back">&larr; abandonar</button>
-      </div>
+      </section>
 
-    </section>
-
-    <p class="footer-note">Robin's Arena &mdash; 4 forajidos, 5 armas, un solo vencedor</p>
-  </main>
-
-  </div><!-- /screen-lobby -->
+      <p class="footer-note">WASD move · mouse aim · click shoot · 1–5 weapons · first to 5 kills</p>
+    </main>
+  </div>
 
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script src="js/network.js"></script>
