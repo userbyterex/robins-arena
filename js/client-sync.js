@@ -1,13 +1,9 @@
 /**
- * client-sync.js
- * Solo se usa en los navegadores que NO son el host. Recibe snapshots (20/seg)
- * y suaviza la posición de los jugadores entre uno y otro para que el
- * movimiento no se vea "a saltos".
+ * client-sync.js — Snapshot interpolation for non-host clients.
  */
 const ClientSync = (() => {
   let latest = null;
-  const rendered = new Map(); // id -> {x,y} posición suavizada actual
-  // Si la posición salta más de esto (p.ej. respawn), se teletransporta en vez de interpolar.
+  const rendered = new Map();
   const SNAP_DISTANCE = 80;
 
   function init(onEvents) {
@@ -17,8 +13,6 @@ const ClientSync = (() => {
     });
   }
 
-  // Se llama cada frame de render (60/seg) para acercar las posiciones
-  // dibujadas hacia el último snapshot recibido (interpolación simple).
   function update() {
     if (!latest) return;
     for (const p of latest.players) {
@@ -30,7 +24,6 @@ const ClientSync = (() => {
       }
       const dx = p.x - r.x;
       const dy = p.y - r.y;
-      // Respawn u otro salto grande: no interpolar (evita deslizarse por el mapa).
       if (dx * dx + dy * dy > SNAP_DISTANCE * SNAP_DISTANCE) {
         r.x = p.x;
         r.y = p.y;
