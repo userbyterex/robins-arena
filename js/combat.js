@@ -1,7 +1,5 @@
 /**
- * combat.js
- * Funciones puras (o casi) de resolución de combate. Usadas exclusivamente
- * por host-sim.js, que es la única simulación autoritativa.
+ * combat.js — Pure combat resolution (host only).
  */
 const Combat = (() => {
 
@@ -12,8 +10,6 @@ const Combat = (() => {
     return Math.abs(d);
   }
 
-  // Intenta un golpe cuerpo a cuerpo del atacante contra todos los demás jugadores vivos.
-  // Devuelve una lista de eventos {targetId, damage, killed}.
   function tryMeleeAttack(attacker, players) {
     const weapon = WEAPONS[attacker.weapon];
     const events = [];
@@ -34,7 +30,6 @@ const Combat = (() => {
     return events;
   }
 
-  // Aplica daño a un jugador; devuelve true si murió con este golpe.
   function applyDamage(target, amount) {
     target.hp = Math.max(0, target.hp - amount);
     target.lastHitFlashAt = performance.now() / 1000;
@@ -46,8 +41,6 @@ const Combat = (() => {
     return false;
   }
 
-  // Actualiza todos los proyectiles: movimiento, colisión con obstáculos y jugadores.
-  // Devuelve {survivors, events} donde events son impactos {attackerId,targetId,weaponId,damage,killed}.
   function updateProjectiles(projectiles, players, dt) {
     const survivors = [];
     const events = [];
@@ -57,7 +50,7 @@ const Combat = (() => {
       p.y += p.vy * dt;
       p.ttl -= dt;
 
-      if (p.ttl <= 0 || GameMap.pointBlocked(p.x, p.y)) continue; // se descarta
+      if (p.ttl <= 0 || GameMap.pointBlocked(p.x, p.y)) continue;
 
       let hit = false;
       for (const target of players) {
@@ -75,7 +68,6 @@ const Combat = (() => {
     return { survivors, events };
   }
 
-  // Revisa respawns pendientes. respawnAt = Infinity => desconectado, no revive.
   function processRespawns(players, spawnAssignment) {
     const now = performance.now() / 1000;
     for (const p of players) {
