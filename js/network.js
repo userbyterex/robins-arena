@@ -21,6 +21,7 @@
 const Network = (() => {
   const MAX_PLAYERS = 4;
   const ID_PREFIX = "ra-"; // Robin's Arena
+  const JOIN_TIMEOUT_MS = 12000;
 
   let peer = null;
   let isHost = false;
@@ -34,12 +35,22 @@ const Network = (() => {
 
   // Solo usado por el cliente: conexión hacia el host
   let hostConn = null;
+  let joinTimeoutId = null;
 
   let callbacks = {};
   const messageHandlers = {}; // type -> fn(msg, fromPeerId)
 
   function onMessage(type, handler) {
     messageHandlers[type] = handler;
+  }
+
+  function ensurePeerJS() {
+    if (typeof Peer === "undefined") {
+      const err = new Error("PeerJS no cargó. Revisa tu conexión o desactiva bloqueadores.");
+      callbacks.onError && callbacks.onError(err);
+      return false;
+    }
+    return true;
   }
 
   // Host: difunde a todos los clientes. Cliente: envía al host.
@@ -88,6 +99,10 @@ const Network = (() => {
       roster.delete(conn.peer);
       hostConnections.delete(conn.peer);
       broadcastRoster();
+      // Avisa a la simulación si la partida ya empezó.
+      if (messageHandlers["peer-left"]) {
+        messageHandlers["peer-left"]({ type: "peer-left", peerId: conn.peer });
+      }
     });
     conn.on("error", (err) => {
       callbacks.onError && callbacks.onError(err);
@@ -99,6 +114,8 @@ const Network = (() => {
     isHost = true;
     myName = name;
     roster = new Map();
+
+    if (!ensurePeerJS()) return;
 
     const code = randomCode();
     peer = new Peer(ID_PREFIX + code, { debug: 0 });
@@ -115,7 +132,11 @@ const Network = (() => {
     });
 
     peer.on("error", (err) => {
-      callbacks.onError && callbacks.onError(err);
+      let msg = err && err.message ? err.message : String(err);
+      if (err && err.type === "unavailable-id") {
+        msg = "Ese código de sala ya está en uso. Intenta de nuevo.";
+      }
+      callbacks.onError && callbacks.onError(new Error(msg));
     });
   }
 
@@ -124,14 +145,32 @@ const Network = (() => {
     isHost = false;
     myName = name;
 
+    if (!ensurePeerJS()) return;
+
+    if (joinTimeoutId) clearTimeout(joinTimeoutId);
+
     peer = new Peer({ debug: 0 });
 
     peer.on("open", (id) => {
       myId = id;
-      const conn = peer.connect(ID_PREFIX + code.toUpperCase());
+      const targetId = ID_PREFIX + code.toUpperCase();
+      const conn = peer.connect(targetId, { reliable: true });
       hostConn = conn;
 
+      joinTimeoutId = setTimeout(() => {
+        if (!conn.open) {
+          callbacks.onError && callbacks.onError(
+            new Error("No se pudo conectar. ¿El código es correcto y el anfitrión sigue en la sala?")
+          );
+          try { conn.close(); } catch (e) {}
+        }
+      }, JOIN_TIMEOUT_MS);
+
       conn.on("open", () => {
+        if (joinTimeoutId) {
+          clearTimeout(joinTimeoutId);
+          joinTimeoutId = null;
+        }
         conn.send({ type: "join", name: myName });
         callbacks.onJoined && callbacks.onJoined(code.toUpperCase());
       });
@@ -151,10 +190,18 @@ const Network = (() => {
       conn.on("close", () => {
         callbacks.onHostLeft && callbacks.onHostLeft();
       });
+
+      conn.on("error", (err) => {
+        callbacks.onError && callbacks.onError(err);
+      });
     });
 
     peer.on("error", (err) => {
-      callbacks.onError && callbacks.onError(err);
+      let msg = err && err.message ? err.message : String(err);
+      if (err && (err.type === "peer-unavailable" || err.type === "network")) {
+        msg = "Campamento no encontrado. Revisa el código o pide al anfitrión que lo funde de nuevo.";
+      }
+      callbacks.onError && callbacks.onError(new Error(msg));
     });
   }
 
@@ -167,6 +214,10 @@ const Network = (() => {
   }
 
   function leaveRoom() {
+    if (joinTimeoutId) {
+      clearTimeout(joinTimeoutId);
+      joinTimeoutId = null;
+    }
     if (peer) {
       peer.destroy();
     }
