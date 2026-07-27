@@ -1,11 +1,11 @@
 /**
- * network.js — PeerJS lobby (classic script, no export).
- * Shows camp code immediately; retries if PeerJS ID is taken.
+ * network.js — PeerJS P2P lobby + camps.
+ * No template literals. Classic script (no export).
  */
 const Network = (() => {
   var MAX_PLAYERS = 6;
   var ID_PREFIX = "ra-";
-  var JOIN_TIMEOUT_MS = 15000;
+  var JOIN_TIMEOUT_MS = 12000;
   var REGISTRY_TTL_MS = 90000;
 
   var peer = null;
@@ -21,7 +21,6 @@ const Network = (() => {
   var discoverPeer = null;
   var registryAnnounceTimer = null;
   var currentCode = "";
-  var hostAttempts = 0;
 
   function loadLocalRegistry() {
     try {
@@ -69,9 +68,8 @@ const Network = (() => {
 
   function ensurePeerJS() {
     if (typeof Peer === "undefined") {
-      if (callbacks.onError) {
-        callbacks.onError(new Error("PeerJS failed to load. Disable adblock / check internet."));
-      }
+      var err = new Error("PeerJS failed to load. Check connection or disable blockers.");
+      if (callbacks.onError) callbacks.onError(err);
       return false;
     }
     return true;
@@ -90,9 +88,7 @@ const Network = (() => {
   function randomCode() {
     var letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     var code = "";
-    for (var i = 0; i < 4; i++) {
-      code += letters[Math.floor(Math.random() * letters.length)];
-    }
+    for (var i = 0; i < 4; i++) code += letters[Math.floor(Math.random() * letters.length)];
     return code;
   }
 
@@ -107,9 +103,7 @@ const Network = (() => {
   function broadcastRoster() {
     var list = rosterList();
     hostConnections.forEach(function (entry) {
-      if (entry.conn && entry.conn.open) {
-        entry.conn.send({ type: "roster", list: list });
-      }
+      if (entry.conn && entry.conn.open) entry.conn.send({ type: "roster", list: list });
     });
     if (callbacks.onRosterUpdate) callbacks.onRosterUpdate(list);
     if (isHost && currentCode) registerCampLocal(currentCode, myName, roster.size);
@@ -117,6 +111,7 @@ const Network = (() => {
 
   function attachHostConnHandlers(conn) {
     conn.on("data", function (msg) {
+      if (!msg || !msg.type) return;
       if (msg.type === "join") {
         if (roster.size >= MAX_PLAYERS) {
           conn.send({ type: "room-full" });
@@ -139,7 +134,7 @@ const Network = (() => {
       }
     });
     conn.on("error", function (err) {
-      console.warn("Host conn error", err);
+      if (callbacks.onError) callbacks.onError(err);
     });
   }
 
@@ -161,42 +156,28 @@ const Network = (() => {
     currentCode = "";
   }
 
-  function destroyPeerQuiet() {
-    try {
-      if (peer) peer.destroy();
-    } catch (e) {}
-    peer = null;
-  }
+  function hostRoom(name, cbs) {
+    callbacks = cbs || {};
+    isHost = true;
+    myName = name;
+    roster = new Map();
 
-  function startHostPeer(code) {
-    destroyPeerQuiet();
-    var peerId = ID_PREFIX + code;
+    if (!ensurePeerJS()) return;
+
+    var code = randomCode();
+    if (callbacks.onHostReady) callbacks.onHostReady(code);
 
     try {
-      peer = new Peer(peerId, {
-        debug: 1,
-        config: {
-          iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:global.stun.twilio.com:3478" }
-          ]
-        }
-      });
+      peer = new Peer(ID_PREFIX + code, { debug: 0 });
     } catch (e) {
       if (callbacks.onError) callbacks.onError(e);
       return;
     }
 
-    var opened = false;
-
     peer.on("open", function (id) {
-      opened = true;
       myId = id;
-      roster = new Map();
       roster.set(id, { name: myName, team: 0 });
       startRegistryAnnounce(code);
-      console.log("[Network] Host ready, code=", code, "id=", id);
-      if (callbacks.onHostReady) callbacks.onHostReady(code);
       broadcastRoster();
     });
 
@@ -205,65 +186,44 @@ const Network = (() => {
     });
 
     peer.on("error", function (err) {
-      console.error("[Network] Peer error", err && err.type, err);
-      var t = err && err.type ? err.type : "";
-      if (t === "unavailable-id" && hostAttempts < 5) {
-        hostAttempts++;
-        var newCode = randomCode();
-        console.log("[Network] ID taken, retry with", newCode);
-        if (callbacks.onHostReady) callbacks.onHostReady(newCode);
-        startHostPeer(newCode);
-        return;
-      }
-      if (t === "network" || t === "server-error" || t === "socket-error") {
-        if (callbacks.onError) {
-          callbacks.onError(new Error("Cannot reach PeerJS server. Check internet / VPN / firewall."));
+      var msg = err && err.message ? err.message : String(err);
+      if (err && err.type === "unavailable-id") {
+        var code2 = randomCode();
+        if (callbacks.onHostReady) callbacks.onHostReady(code2);
+        try {
+          if (peer) peer.destroy();
+          peer = new Peer(ID_PREFIX + code2, { debug: 0 });
+          peer.on("open", function (id) {
+            myId = id;
+            roster.set(id, { name: myName, team: 0 });
+            startRegistryAnnounce(code2);
+            broadcastRoster();
+          });
+          peer.on("connection", function (conn) {
+            attachHostConnHandlers(conn);
+          });
+          peer.on("error", function (e2) {
+            if (callbacks.onError) callbacks.onError(new Error(e2 && e2.message ? e2.message : "Peer error"));
+          });
+        } catch (e3) {
+          if (callbacks.onError) callbacks.onError(e3);
         }
         return;
       }
-      if (!opened && callbacks.onError) {
-        callbacks.onError(new Error(err && err.message ? err.message : String(err)));
-      }
+      if (callbacks.onError) callbacks.onError(new Error(msg));
     });
-  }
-
-  function hostRoom(name, cbs) {
-    callbacks = cbs || {};
-    isHost = true;
-    myName = name || "Host";
-    roster = new Map();
-    hostAttempts = 0;
-    hostConnections.clear();
-
-    if (!ensurePeerJS()) return;
-
-    var code = randomCode();
-    // Show code immediately so UI is not stuck on ----
-    currentCode = code;
-    if (callbacks.onHostReady) callbacks.onHostReady(code);
-    startHostPeer(code);
   }
 
   function joinRoom(code, name, cbs) {
     callbacks = cbs || {};
     isHost = false;
-    myName = name || "Player";
+    myName = name;
 
     if (!ensurePeerJS()) return;
     if (joinTimeoutId) clearTimeout(joinTimeoutId);
 
-    destroyPeerQuiet();
-
     try {
-      peer = new Peer({
-        debug: 1,
-        config: {
-          iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:global.stun.twilio.com:3478" }
-          ]
-        }
-      });
+      peer = new Peer({ debug: 0 });
     } catch (e) {
       if (callbacks.onError) callbacks.onError(e);
       return;
@@ -272,14 +232,13 @@ const Network = (() => {
     peer.on("open", function (id) {
       myId = id;
       var targetId = ID_PREFIX + String(code).toUpperCase();
-      console.log("[Network] Joining", targetId, "as", id);
       var conn = peer.connect(targetId, { reliable: true });
       hostConn = conn;
 
       joinTimeoutId = setTimeout(function () {
         if (!conn.open) {
           if (callbacks.onError) {
-            callbacks.onError(new Error("Could not connect. Is the code correct and is the host online?"));
+            callbacks.onError(new Error("Could not connect. Check the code — is the host still in the camp?"));
           }
           try { conn.close(); } catch (e) {}
         }
@@ -295,6 +254,7 @@ const Network = (() => {
       });
 
       conn.on("data", function (msg) {
+        if (!msg || !msg.type) return;
         if (msg.type === "roster") {
           if (callbacks.onRosterUpdate) callbacks.onRosterUpdate(msg.list);
         } else if (msg.type === "room-full") {
@@ -311,13 +271,11 @@ const Network = (() => {
       });
 
       conn.on("error", function (err) {
-        console.warn("[Network] join conn error", err);
         if (callbacks.onError) callbacks.onError(err);
       });
     });
 
     peer.on("error", function (err) {
-      console.error("[Network] join peer error", err);
       var msg = err && err.message ? err.message : String(err);
       if (err && (err.type === "peer-unavailable" || err.type === "network")) {
         msg = "Camp not found. Check the code or ask the host to create it again.";
@@ -411,9 +369,7 @@ const Network = (() => {
     if (!isHost) return;
     stopRegistryAnnounce();
     hostConnections.forEach(function (entry) {
-      if (entry.conn && entry.conn.open) {
-        entry.conn.send({ type: "start", payload: payload });
-      }
+      if (entry.conn && entry.conn.open) entry.conn.send({ type: "start", payload: payload });
     });
     if (callbacks.onStartGame) callbacks.onStartGame(payload);
   }
@@ -424,26 +380,29 @@ const Network = (() => {
       joinTimeoutId = null;
     }
     stopRegistryAnnounce();
-    destroyPeerQuiet();
+    if (peer) {
+      try { peer.destroy(); } catch (e) {}
+    }
+    peer = null;
     hostConn = null;
     hostConnections.clear();
     roster = new Map();
     isHost = false;
+    myId = null;
   }
 
-  function getMyId() { return myId; }
-  function getIsHost() { return isHost; }
+  function getMyId() {
+    return myId;
+  }
 
   return {
-    MAX_PLAYERS: MAX_PLAYERS,
     hostRoom: hostRoom,
     joinRoom: joinRoom,
+    listOpenCamps: listOpenCamps,
     startGame: startGame,
     leaveRoom: leaveRoom,
-    getMyId: getMyId,
-    getIsHost: getIsHost,
-    onMessage: onMessage,
     send: send,
-    listOpenCamps: listOpenCamps,
+    onMessage: onMessage,
+    getMyId: getMyId,
   };
 })();
