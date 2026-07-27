@@ -1,6 +1,5 @@
 /**
- * game.js — Defensive conquest render + localPlayer fallback.
- * Classic script, no import/export.
+ * game.js — Defensive conquest render. ULTRA-SAFE.
  */
 var Game = (function () {
   var canvas, ctx;
@@ -15,6 +14,7 @@ var Game = (function () {
   var shakeMag = 0;
   var prevLocalHp = null;
   var lastError = null;
+  var frameCount = 0;
 
   function buildVignette() {
     if (!ctx || !canvas) return null;
@@ -99,6 +99,7 @@ var Game = (function () {
     shakeMag = 0;
     prevLocalHp = null;
     lastError = null;
+    frameCount = 0;
 
     if (window.Particles && Particles.clear) {
       try { Particles.clear(); } catch (e) {}
@@ -106,7 +107,7 @@ var Game = (function () {
 
     var players = (payload && payload.players) ? payload.players : [];
     if (!myId && players.length) myId = players[0].id;
-    if (!myId) myId = "local-host";
+    if (!myId) myId = isHost ? "host-local" : "client-local";
 
     if (isHost) {
       if (typeof HostSim === "undefined") {
@@ -114,17 +115,28 @@ var Game = (function () {
         console.error(lastError);
         return;
       }
-      HostSim.init(players);
+      try {
+        HostSim.init(players);
+      } catch (e) {
+        console.error("HostSim.init failed:", e);
+        lastError = "HostSim.init: " + (e.message || e);
+      }
       if (typeof Network !== "undefined") {
         Network.onMessage("input", function (msg, fromPeerId) {
-          HostSim.setInput(fromPeerId, msg);
+          if (typeof HostSim !== "undefined" && HostSim.setInput) HostSim.setInput(fromPeerId, msg);
         });
         Network.onMessage("peer-left", function (msg) {
-          if (msg && msg.peerId) HostSim.markDisconnected(msg.peerId);
+          if (msg && msg.peerId && typeof HostSim !== "undefined" && HostSim.markDisconnected) {
+            HostSim.markDisconnected(msg.peerId);
+          }
         });
       }
     } else if (typeof ClientSync !== "undefined") {
-      ClientSync.init(playEventFX);
+      try {
+        ClientSync.init(playEventFX);
+      } catch (e) {
+        console.error("ClientSync.init failed:", e);
+      }
     }
   }
 
@@ -175,19 +187,21 @@ var Game = (function () {
       angle: (window.Input && Input.getAimAngle) ? Input.getAimAngle() : 0,
       attack: (window.Input && Input.isAttacking) ? Input.isAttacking() : false,
       weapon: currentWeapon,
-      ability: (window.AbilityInput && AbilityInput.consume()) ? true : false,
+      ability: (window.AbilityInput && AbilityInput.consume) ? AbilityInput.consume() : false,
     };
   }
 
   function networkTick() {
     try {
       var input = buildLocalInput();
-      if (isHost && window.HostSim) {
+      if (isHost && typeof HostSim !== "undefined" && HostSim.setInput && HostSim.tick) {
         HostSim.setInput(myId, input);
         HostSim.tick(1 / (HostSim.TICK_RATE || 20));
-        playEventFX(HostSim.getTickEvents());
-        if (typeof Network !== "undefined") Network.send(HostSim.getSnapshotPayload());
-      } else if (typeof Network !== "undefined") {
+        playEventFX(HostSim.getTickEvents ? HostSim.getTickEvents() : []);
+        if (typeof Network !== "undefined" && Network.send && HostSim.getSnapshotPayload) {
+          Network.send(HostSim.getSnapshotPayload());
+        }
+      } else if (typeof Network !== "undefined" && Network.send) {
         Network.send(input);
       }
     } catch (e) {
@@ -201,6 +215,7 @@ var Game = (function () {
     var now = performance.now();
     var dt = Math.min(0.1, (now - lastFrameTime) / 1000);
     lastFrameTime = now;
+    frameCount++;
 
     try {
       var players = [];
@@ -214,7 +229,7 @@ var Game = (function () {
       var localPlayer = null;
       var serverTime = now / 1000;
 
-      if (isHost && window.HostSim) {
+      if (isHost && typeof HostSim !== "undefined" && HostSim.getState) {
         var state = HostSim.getState();
         players = state.players || [];
         projectiles = state.projectiles || [];
@@ -228,16 +243,16 @@ var Game = (function () {
           if (players[i].id === myId) { localPlayer = players[i]; break; }
         }
         if (!localPlayer && players.length) localPlayer = players[0];
-      } else if (window.ClientSync) {
-        ClientSync.update();
-        players = ClientSync.getPlayers() || [];
-        projectiles = ClientSync.getProjectiles() || [];
+      } else if (typeof ClientSync !== "undefined") {
+        if (ClientSync.update) ClientSync.update();
+        players = ClientSync.getPlayers ? ClientSync.getPlayers() : [];
+        projectiles = ClientSync.getProjectiles ? ClientSync.getProjectiles() : [];
         npcs = ClientSync.getNpcs ? ClientSync.getNpcs() : [];
         flags = ClientSync.getFlags ? ClientSync.getFlags() : [];
-        killfeed = ClientSync.getKillfeed() || [];
-        timeLeft = ClientSync.getTimeLeft() || 0;
-        matchOver = ClientSync.isMatchOver();
-        winnerName = ClientSync.getWinnerName();
+        killfeed = ClientSync.getKillfeed ? ClientSync.getKillfeed() : [];
+        timeLeft = ClientSync.getTimeLeft ? ClientSync.getTimeLeft() : 0;
+        matchOver = ClientSync.isMatchOver ? ClientSync.isMatchOver() : false;
+        winnerName = ClientSync.getWinnerName ? ClientSync.getWinnerName() : null;
         for (var j = 0; j < players.length; j++) {
           if (players[j].id === myId) { localPlayer = players[j]; break; }
         }
@@ -252,13 +267,18 @@ var Game = (function () {
         ctx.fillStyle = "#e8dcc0";
         ctx.font = "20px monospace";
         ctx.textAlign = "center";
-        ctx.fillText("Connecting to camp...", canvas.width / 2, canvas.height / 2 - 10);
+        var statusMsg = isHost ? "Starting camp..." : "Connecting to camp...";
+        ctx.fillText(statusMsg, canvas.width / 2, canvas.height / 2 - 10);
         ctx.font = "14px monospace";
         ctx.fillStyle = "#aaa";
-        ctx.fillText("myId: " + String(myId) + " players: " + players.length, canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText("myId: " + String(myId).slice(0, 20) + " players: " + players.length, canvas.width / 2, canvas.height / 2 + 20);
         if (lastError) {
           ctx.fillStyle = "#ff6666";
           ctx.fillText(lastError, canvas.width / 2, canvas.height / 2 + 44);
+        }
+        if (isHost && frameCount > 10 && players.length === 0) {
+          ctx.fillStyle = "#ffaa44";
+          ctx.fillText("Host: forcing solo player...", canvas.width / 2, canvas.height / 2 + 66);
         }
         rafId = requestAnimationFrame(renderLoop);
         return;
@@ -368,3 +388,4 @@ var Game = (function () {
 
   return { init: init, start: start, stop: stop };
 })();
+        
