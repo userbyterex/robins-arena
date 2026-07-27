@@ -1,6 +1,6 @@
 /**
- * game.js — Conquest mode wiring + NPC/ram draw.
- * No template literals (paste-safe).
+ * game.js — Conquest + classes + ability FX.
+ * Classic script, paste-safe.
  */
 const Game = (() => {
   var canvas, ctx;
@@ -33,24 +33,27 @@ const Game = (() => {
       else if (ev.kind === "hit" || ev.kind === "structure_hit") { AudioFX.hit(); Particles.hitSpark(ev.x || 0, ev.y || 0); }
       else if (ev.kind === "death") { AudioFX.death(); Particles.deathBurst(ev.x, ev.y); }
       else if (ev.kind === "capture" || ev.kind === "spawn") AudioFX.hit();
+      else if (ev.kind === "ability") {
+        AudioFX.hit();
+        Particles.deathBurst(ev.x, ev.y);
+      }
+      else if (ev.kind === "heal") {
+        Particles.hitSpark(ev.x, ev.y);
+      }
     }
   }
 
   function drawNpc(ctx, screenX, screenY, npc) {
     ctx.save();
     ctx.translate(screenX, screenY);
-
     var col = npc.color || (npc.team === 0 ? "#3d9e58" : "#5a8ec8");
     var size = npc.isRam ? 18 : 11;
-
     ctx.fillStyle = "rgba(0,0,0,0.32)";
     ctx.beginPath();
     ctx.ellipse(0, size * 0.7, size * 0.9, size * 0.35, 0, 0, Math.PI * 2);
     ctx.fill();
-
     ctx.save();
     ctx.rotate(npc.angle || 0);
-
     if (npc.isRam) {
       ctx.fillStyle = "#4a3720";
       ctx.fillRect(-20, -10, 36, 20);
@@ -62,13 +65,8 @@ const Game = (() => {
       ctx.beginPath(); ctx.arc(8, 10, 5, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = "#8a8a8a";
       ctx.beginPath();
-      ctx.moveTo(16, -8);
-      ctx.lineTo(28, 0);
-      ctx.lineTo(16, 8);
-      ctx.closePath();
+      ctx.moveTo(16, -8); ctx.lineTo(28, 0); ctx.lineTo(16, 8); ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = "#555";
-      ctx.stroke();
       ctx.fillStyle = col;
       ctx.fillRect(-6, -16, 12, 6);
     } else {
@@ -81,28 +79,18 @@ const Game = (() => {
       ctx.beginPath();
       ctx.arc(0, -size * 1.1, size * 0.45, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#fff";
-      ctx.beginPath();
-      ctx.arc(size * 1.05, 0, 2, 0, Math.PI * 2);
-      ctx.fill();
     }
-
     ctx.restore();
-
     ctx.font = npc.isRam ? "12px VT323, monospace" : "11px VT323, monospace";
     ctx.textAlign = "center";
-    ctx.fillStyle = "rgba(0,0,0,0.5)";
-    ctx.fillText(npc.name || "NPC", 1, -size - 14);
     ctx.fillStyle = npc.isRam ? "#f0c040" : "#e8eef4";
     ctx.fillText(npc.name || "NPC", 0, -size - 15);
-
     var barW = npc.isRam ? 36 : 24;
     var pct = (npc.hp || 0) / (npc.maxHp || 40);
     ctx.fillStyle = "#0a0c0e";
     ctx.fillRect(-barW / 2, -size - 10, barW, 3);
     ctx.fillStyle = pct > 0.4 ? "#3dce5c" : "#d13a35";
     ctx.fillRect(-barW / 2, -size - 10, barW * Math.max(0, pct), 3);
-
     ctx.restore();
   }
 
@@ -165,6 +153,7 @@ const Game = (() => {
       angle: Input.getAimAngle(),
       attack: Input.isAttacking(),
       weapon: currentWeapon,
+      ability: (window.AbilityInput && AbilityInput.consume()) ? true : false,
     };
   }
 
@@ -186,7 +175,7 @@ const Game = (() => {
     var dt = Math.min(0.1, (now - lastFrameTime) / 1000);
     lastFrameTime = now;
 
-    var players, projectiles, npcs, flags, killfeed, timeLeft, matchOver, winnerName, localPlayer;
+    var players, projectiles, npcs, flags, killfeed, timeLeft, matchOver, winnerName, localPlayer, serverTime;
 
     if (isHost) {
       var state = HostSim.getState();
@@ -198,6 +187,7 @@ const Game = (() => {
       timeLeft = state.timeLeft;
       matchOver = state.matchOver;
       winnerName = state.winnerName;
+      serverTime = performance.now() / 1000;
       localPlayer = players.find(function (p) { return p.id === myId; });
     } else {
       ClientSync.update();
@@ -209,6 +199,7 @@ const Game = (() => {
       timeLeft = ClientSync.getTimeLeft();
       matchOver = ClientSync.isMatchOver();
       winnerName = ClientSync.getWinnerName();
+      serverTime = ClientSync.getServerTime ? ClientSync.getServerTime() : performance.now() / 1000;
       localPlayer = players.find(function (p) { return p.id === myId; });
     }
 
@@ -276,6 +267,7 @@ const Game = (() => {
       winnerName: winnerName,
       viewW: canvas.width,
       viewH: canvas.height,
+      serverTime: serverTime,
     });
 
     rafId = requestAnimationFrame(renderLoop);
