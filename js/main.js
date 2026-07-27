@@ -20,10 +20,12 @@
   var playerRoster = $("player-roster");
   var btnStart = $("btn-start-game");
   var campList = $("camp-list");
+  var classPicker = $("class-picker");
 
   var playerName = "";
   var isHost = false;
   var lastRosterList = [];
+  var selectedClass = "warrior";
 
   function showPanel(name) {
     Object.keys(panels).forEach(function (key) {
@@ -39,6 +41,24 @@
     var msg = err && err.message ? err.message : String(err || "error");
     if (lobbyStatus) lobbyStatus.textContent = "Error: " + msg;
     console.error(msg);
+  }
+
+  function renderClassPicker() {
+    if (!classPicker) return;
+    classPicker.innerHTML = "";
+    if (typeof CLASS_ORDER === "undefined" || typeof CLASSES === "undefined") return;
+    CLASS_ORDER.forEach(function (cid) {
+      var c = CLASSES[cid];
+      var btn = document.createElement("button");
+      btn.className = "class-btn" + (cid === selectedClass ? " selected" : "");
+      btn.innerHTML = '<div class="class-icon">' + c.icon + '</div><div class="class-name">' + c.name + '</div><div class="class-tag">' + c.tagline + '</div>';
+      btn.onclick = function () {
+        selectedClass = cid;
+        Array.from(classPicker.children).forEach(function (b) { b.classList.remove("selected"); });
+        btn.classList.add("selected");
+      };
+      classPicker.appendChild(btn);
+    });
   }
 
   function renderRoster(list) {
@@ -100,7 +120,7 @@
             colorIndex: 0,
             spawnIndex: 0,
             team: 0,
-            classId: "warrior",
+            classId: selectedClass,
           }],
         };
       }
@@ -144,9 +164,10 @@
         playerName = n;
       }
       isHost = true;
-      if (lobbyStatus) lobbyStatus.textContent = "Opening camp…";
+      if (lobbyStatus) lobbyStatus.textContent = "Opening camp...";
       showPanel("lobby");
       renderRoster([{ id: "pending", name: playerName, team: 0 }]);
+      renderClassPicker();
       if (typeof Network === "undefined") {
         showError("Network missing");
         return;
@@ -164,13 +185,13 @@
   if (btnJoinOpen) {
     btnJoinOpen.onclick = function () {
       showPanel("join");
-      if (campList) campList.innerHTML = "<li class='empty'>Enter a 4-letter code</li>";
+      if (campList) campList.innerHTML = "Enter a 4-letter code<br>";
       if (typeof Network !== "undefined" && Network.listOpenCamps) {
         Network.listOpenCamps().then(function (camps) {
           if (!campList) return;
           campList.innerHTML = "";
           if (!camps.length) {
-            campList.innerHTML = "<li class='empty'>No camps — enter code</li>";
+            campList.innerHTML = "No camps — enter code<br>";
             return;
           }
           camps.forEach(function (c) {
@@ -190,7 +211,7 @@
             campList.appendChild(li);
           });
         }).catch(function () {
-          if (campList) campList.innerHTML = "<li class='empty'>Use code below</li>";
+          if (campList) campList.innerHTML = "Use code below<br>";
         });
       }
     };
@@ -215,9 +236,10 @@
         playerName = n;
       }
       isHost = false;
-      if (lobbyStatus) lobbyStatus.textContent = "Connecting…";
+      if (lobbyStatus) lobbyStatus.textContent = "Connecting...";
       showPanel("lobby");
       if (roomCodeDisplay) roomCodeDisplay.textContent = code;
+      renderClassPicker();
       if (typeof Network === "undefined") {
         showError("Network missing");
         return;
@@ -256,11 +278,11 @@
           if (players[i].id === myId) found = true;
         }
         if (!found) {
-          players.unshift({ id: myId, name: playerName || "Host", team: 0 });
+          players.unshift({ id: myId, name: playerName || "Host", team: 0, classId: selectedClass });
         }
       } else if (!players.length) {
         myId = "local-host";
-        players = [{ id: myId, name: playerName || "Host", team: 0 }];
+        players = [{ id: myId, name: playerName || "Host", team: 0, classId: selectedClass }];
       }
 
       var payload = {
@@ -271,7 +293,7 @@
             colorIndex: i,
             spawnIndex: i,
             team: (typeof p.team === "number") ? p.team : (i % 2),
-            classId: "warrior",
+            classId: p.classId || selectedClass || "warrior",
           };
         }),
       };
@@ -288,3 +310,4 @@
     };
   }
 })();
+          
