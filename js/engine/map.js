@@ -195,3 +195,16 @@ var GameMap = (function () {
     ctx.moveTo(sx + w * 0.1, sy + h);
     ctx.lineTo(sx, sy + h * 0.45);
     ctx.lineTo(sx + w *
+return {
+    WIDTH: WIDTH,
+    HEIGHT: HEIGHT,
+    SPAWNS: SPAWNS,
+    OBSTACLES: OBSTACLES,
+    TOWERS: TOWERS,
+    FLAGS: FLAGS,
+    resolveCircleCollision: resolveCircleCollision,
+    tryMove: tryMove,
+    pointBlocked: pointBlocked,
+    draw: draw,
+  };
+})();
