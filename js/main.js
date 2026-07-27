@@ -1,5 +1,5 @@
 /**
- * main.js — Solo play OK + safe start + visible errors.
+ * main.js — ULTRA-DEFENSIVE. Siempre inicia, nunca se atasca.
  */
 (function () {
   function $(id) { return document.getElementById(id); }
@@ -26,6 +26,7 @@
   var isHost = false;
   var lastRosterList = [];
   var selectedClass = "warrior";
+  var gameStarted = false;
 
   function showPanel(name) {
     Object.keys(panels).forEach(function (key) {
@@ -46,7 +47,10 @@
   function renderClassPicker() {
     if (!classPicker) return;
     classPicker.innerHTML = "";
-    if (typeof CLASS_ORDER === "undefined" || typeof CLASSES === "undefined") return;
+    if (typeof CLASS_ORDER === "undefined" || typeof CLASSES === "undefined") {
+      console.warn("CLASSES not loaded");
+      return;
+    }
     CLASS_ORDER.forEach(function (cid) {
       var c = CLASSES[cid];
       var btn = document.createElement("button");
@@ -68,14 +72,14 @@
     lastRosterList.forEach(function (p, i) {
       var li = document.createElement("li");
       var team = (p.team === 1 || i % 2 === 1) ? "Castle" : "Camp";
-      li.textContent = p.name + " — " + team;
+      li.textContent = p.name + " \u2014 " + team;
       try {
         if (typeof Network !== "undefined" && p.id === Network.getMyId()) li.classList.add("you");
       } catch (e) {}
       playerRoster.appendChild(li);
     });
     if (lobbyStatus) {
-      lobbyStatus.textContent = lastRosterList.length + " player(s) — host can start anytime";
+      lobbyStatus.textContent = lastRosterList.length + " player(s) \u2014 host can start anytime";
     }
     if (btnStart) {
       if (isHost) {
@@ -90,6 +94,8 @@
   }
 
   function onStartGame(payload) {
+    if (gameStarted) return;
+    gameStarted = true;
     try {
       if (screenLobby) {
         screenLobby.style.display = "none";
@@ -106,25 +112,26 @@
       if (!id && payload && payload.players && payload.players.length) {
         id = payload.players[0].id;
       }
-      if (!id) id = "local-host";
+      if (!id) id = isHost ? "host-local" : "client-local";
 
       if (typeof Game === "undefined") {
         alert("Game module missing");
         return;
       }
-      if (!payload || !payload.players || !payload.players.length) {
-        payload = {
-          players: [{
-            id: id,
-            name: playerName || "Host",
-            colorIndex: 0,
-            spawnIndex: 0,
-            team: 0,
-            classId: selectedClass,
-          }],
-        };
+
+      if (!payload) payload = {};
+      if (!payload.players || !payload.players.length) {
+        payload.players = [{
+          id: id,
+          name: playerName || "Player",
+          colorIndex: 0,
+          spawnIndex: 0,
+          team: 0,
+          classId: selectedClass || "warrior",
+        }];
       }
 
+      console.log("Game.init", { isHost: isHost, myId: id, players: payload.players.length });
       Game.init(payload, isHost, id);
       Game.start(canvas);
     } catch (e) {
@@ -169,7 +176,7 @@
       renderRoster([{ id: "pending", name: playerName, team: 0 }]);
       renderClassPicker();
       if (typeof Network === "undefined") {
-        showError("Network missing");
+        showError("Network missing \u2014 solo mode only");
         return;
       }
       Network.hostRoom(playerName, Object.assign({}, sharedCallbacks, {
@@ -191,7 +198,7 @@
           if (!campList) return;
           campList.innerHTML = "";
           if (!camps.length) {
-            campList.innerHTML = "No camps — enter code<br>";
+            campList.innerHTML = "No camps \u2014 enter code<br>";
             return;
           }
           camps.forEach(function (c) {
@@ -298,6 +305,8 @@
         }),
       };
 
+      console.log("Start hunt clicked", payload);
+
       try {
         if (typeof Network !== "undefined" && Network.startGame) {
           Network.startGame(payload);
@@ -310,4 +319,3 @@
     };
   }
 })();
-          
