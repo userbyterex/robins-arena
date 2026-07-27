@@ -1,6 +1,5 @@
 /**
- * engine/map.js — Viral conquest arena (Camp vs Castle).
- * Open lanes so NPCs don't stick. Bold visuals.
+ * engine/map.js — Complete conquest map (Camp vs Castle).
  */
 var GameMap = (function () {
   var WIDTH = 1600;
@@ -66,24 +65,13 @@ var GameMap = (function () {
         var closestY = Math.max(ob.y, Math.min(py, ob.y + ob.h));
         var dx = px - closestX;
         var dy = py - closestY;
-        var distSq = dx * dx + dy * dy;
-        if (distSq < radius * radius) {
-          var dist = Math.sqrt(distSq);
-          if (dist < 0.0001) {
-            var left = px - ob.x;
-            var right = ob.x + ob.w - px;
-            var top = py - ob.y;
-            var bot = ob.y + ob.h - py;
-            var m = Math.min(left, right, top, bot);
-            if (m === left) px = ob.x - radius - 0.5;
-            else if (m === right) px = ob.x + ob.w + radius + 0.5;
-            else if (m === top) py = ob.y - radius - 0.5;
-            else py = ob.y + ob.h + radius + 0.5;
-          } else {
-            var overlap = radius - dist + 0.5;
-            px += (dx / dist) * overlap;
-            py += (dy / dist) * overlap;
-          }
+        var dist = Math.hypot(dx, dy);
+        if (dist < radius && dist > 0.001) {
+          var overlap = radius - dist + 0.5;
+          px += (dx / dist) * overlap;
+          py += (dy / dist) * overlap;
+        } else if (dist < 0.001) {
+          px += radius;
         }
       }
     }
@@ -142,28 +130,14 @@ var GameMap = (function () {
     road.addColorStop(1, "rgba(0,0,0,0)");
     g.fillStyle = road;
     g.fillRect(WIDTH * 0.4, 0, WIDTH * 0.2, HEIGHT);
-    g.fillStyle = "rgba(90,160,220,0.04)";
-    g.fillRect(0, HEIGHT * 0.38, WIDTH, HEIGHT * 0.24);
     var seed = 4242;
     function rand() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
-    g.strokeStyle = "rgba(255,255,255,0.03)";
-    g.lineWidth = 1;
-    for (var gx = 0; gx < WIDTH; gx += 48) {
-      g.beginPath(); g.moveTo(gx, 0); g.lineTo(gx, HEIGHT); g.stroke();
-    }
-    for (var gy = 0; gy < HEIGHT; gy += 48) {
-      g.beginPath(); g.moveTo(0, gy); g.lineTo(WIDTH, gy); g.stroke();
-    }
-    for (var n = 0; n < 140; n++) {
+    for (var n = 0; n < 120; n++) {
       g.fillStyle = rand() > 0.5 ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.025)";
       g.beginPath();
       g.arc(rand() * WIDTH, rand() * HEIGHT, 8 + rand() * 28, 0, Math.PI * 2);
       g.fill();
     }
-    g.fillStyle = "rgba(255,140,40,0.05)";
-    g.beginPath(); g.arc(130, 450, 90, 0, Math.PI * 2); g.fill();
-    g.fillStyle = "rgba(90,140,220,0.05)";
-    g.beginPath(); g.arc(1470, 450, 90, 0, Math.PI * 2); g.fill();
   })();
 
   function drawTree(ctx, sx, sy, w, h) {
@@ -178,8 +152,6 @@ var GameMap = (function () {
     ctx.beginPath(); ctx.arc(cx, cy, w * 0.58, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#2d6b38";
     ctx.beginPath(); ctx.arc(cx - 8, cy - 8, w * 0.32, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "rgba(120,200,100,0.15)";
-    ctx.beginPath(); ctx.arc(cx + 4, cy - 4, w * 0.2, 0, Math.PI * 2); ctx.fill();
   }
 
   function drawRock(ctx, sx, sy, w, h) {
@@ -187,15 +159,124 @@ var GameMap = (function () {
     ctx.beginPath();
     ctx.ellipse(sx + w / 2, sy + h * 0.92, w / 2, h * 0.2, 0, 0, Math.PI * 2);
     ctx.fill();
-    var g = ctx.createLinearGradient(sx, sy, sx + w, sy + h);
-    g.addColorStop(0, "#6a6860");
-    g.addColorStop(1, "#3a3830");
-    ctx.fillStyle = g;
+    ctx.fillStyle = "#5a5850";
     ctx.beginPath();
     ctx.moveTo(sx + w * 0.1, sy + h);
     ctx.lineTo(sx, sy + h * 0.45);
-    ctx.lineTo(sx + w *
-return {
+    ctx.lineTo(sx + w * 0.3, sy);
+    ctx.lineTo(sx + w * 0.7, sy + h * 0.15);
+    ctx.lineTo(sx + w, sy + h * 0.5);
+    ctx.lineTo(sx + w * 0.85, sy + h);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawCrate(ctx, sx, sy, w, h) {
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.fillRect(sx + 2, sy + h - 4, w, 6);
+    ctx.fillStyle = "#8a6a30";
+    ctx.fillRect(sx, sy, w, h);
+    ctx.strokeStyle = "#5a4018";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx, sy, w, h);
+    ctx.beginPath();
+    ctx.moveTo(sx, sy + h / 2);
+    ctx.lineTo(sx + w, sy + h / 2);
+    ctx.stroke();
+  }
+
+  function drawWall(ctx, sx, sy, w, h) {
+    ctx.fillStyle = "#3a4550";
+    ctx.fillRect(sx, sy, w, h);
+    ctx.strokeStyle = "#1a2028";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx, sy, w, h);
+  }
+
+  function drawTower(ctx, sx, sy, team) {
+    ctx.fillStyle = team === 0 ? "#2d6a4f" : "#2c4a6e";
+    ctx.fillRect(sx - 14, sy - 28, 28, 40);
+    ctx.fillStyle = team === 0 ? "#40916c" : "#4a7ab0";
+    ctx.beginPath();
+    ctx.moveTo(sx - 18, sy - 28);
+    ctx.lineTo(sx, sy - 44);
+    ctx.lineTo(sx + 18, sy - 28);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawFlagZone(ctx, sx, sy, f, live) {
+    var team = live && live.team != null ? live.team : f.team;
+    var progress = live && live.progress != null ? live.progress : 0;
+    var col = team === 0 ? "rgba(61,158,88,0.35)" : team === 1 ? "rgba(90,140,200,0.35)" : "rgba(200,200,200,0.2)";
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.arc(sx, sy, f.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = team === 0 ? "#3d9e58" : team === 1 ? "#5a8ec8" : "#888";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    if (progress > 0 && progress < 1) {
+      ctx.strokeStyle = "#f0c040";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(sx, sy, f.radius + 6, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#e8eef4";
+    ctx.font = "13px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(f.name, sx, sy - f.radius - 8);
+    if (live && live.structureHp != null && live.structureMax) {
+      var pct = live.structureHp / live.structureMax;
+      ctx.fillStyle = "#0a0c0e";
+      ctx.fillRect(sx - 30, sy + f.radius + 4, 60, 6);
+      ctx.fillStyle = pct > 0.35 ? (team === 0 ? "#3d9e58" : "#5a8ec8") : "#d13a35";
+      ctx.fillRect(sx - 30, sy + f.radius + 4, 60 * pct, 6);
+    }
+  }
+
+  function draw(ctx, cameraX, cameraY, viewW, viewH, extra) {
+    ctx.drawImage(floorCanvas, -cameraX, -cameraY);
+    ctx.strokeStyle = "#0a0e10";
+    ctx.lineWidth = 14;
+    ctx.strokeRect(-cameraX, -cameraY, WIDTH, HEIGHT);
+
+    ctx.font = "18px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(61,158,88,0.3)";
+    ctx.fillText("CAMP", 180 - cameraX, 40 - cameraY);
+    ctx.fillStyle = "rgba(90,140,200,0.3)";
+    ctx.fillText("CASTLE", WIDTH - 180 - cameraX, 40 - cameraY);
+
+    for (var i = 0; i < OBSTACLES.length; i++) {
+      var ob = OBSTACLES[i];
+      var sx = ob.x - cameraX;
+      var sy = ob.y - cameraY;
+      if (sx + ob.w < -20 || sy + ob.h < -20 || sx > viewW + 20 || sy > viewH + 20) continue;
+      if (ob.type === "tree") drawTree(ctx, sx, sy, ob.w, ob.h);
+      else if (ob.type === "rock") drawRock(ctx, sx, sy, ob.w, ob.h);
+      else if (ob.type === "crate") drawCrate(ctx, sx, sy, ob.w, ob.h);
+      else if (ob.type === "wall") drawWall(ctx, sx, sy, ob.w, ob.h);
+    }
+
+    for (var t = 0; t < TOWERS.length; t++) {
+      var tw = TOWERS[t];
+      drawTower(ctx, tw.x - cameraX, tw.y - cameraY, tw.team);
+    }
+
+    var liveFlags = (extra && extra.flags) ? extra.flags : [];
+    for (var f = 0; f < FLAGS.length; f++) {
+      var flag = FLAGS[f];
+      var live = null;
+      for (var li = 0; li < liveFlags.length; li++) {
+        if (liveFlags[li].id === flag.id) { live = liveFlags[li]; break; }
+      }
+      drawFlagZone(ctx, flag.x - cameraX, flag.y - cameraY, flag, live);
+    }
+  }
+
+  return {
     WIDTH: WIDTH,
     HEIGHT: HEIGHT,
     SPAWNS: SPAWNS,
