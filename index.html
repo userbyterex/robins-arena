@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Robin's Arena</title>
 <link rel="stylesheet" href="css/style.css" />
 <link rel="stylesheet" href="css/hud.css" />
-<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Cinzel:wght@700&display=swap" rel="stylesheet" />
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <style>
 body {
@@ -134,7 +134,6 @@ button:hover {
 }
 .hidden { display: none !important; }
 
-/* Paneles que main.js necesita */
 .scroll-panel {
   display:none;
   flex-direction:column;
@@ -166,6 +165,71 @@ button:hover {
 #player-roster li.you { color:#f5c842; }
 #lobby-status { color:#aaa; margin:10px 0; }
 #room-code-display { color:#f5c842; letter-spacing:2px; }
+
+.class-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+  margin: 12px 0;
+}
+.class-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 6px;
+  background: #0f3460;
+  border: 2px solid #2a4a7a;
+  border-radius: 10px;
+  color: #eee;
+  cursor: pointer;
+  width: 100%;
+  margin: 0;
+  font-family: inherit;
+}
+.class-btn.selected {
+  background: #1a4a7a;
+  box-shadow: 0 0 12px rgba(245,200,66,0.45);
+  border-color: #f5c842;
+}
+.class-icon { font-size: 1.6rem; line-height: 1.2; }
+.class-name { font-weight: bold; font-size: 1.05rem; }
+.class-tag { font-size: 0.75rem; color: #88aacc; }
+.class-hint { color: #666; font-size: 0.9rem; margin: 0; }
+
+.game-viewport {
+  position: relative;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #1a2b1e;
+  border-radius: 8px;
+}
+.ability-btn {
+  position: absolute;
+  bottom: 90px;
+  right: 18px;
+  z-index: 20;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #f5c842, #c0392b);
+  color: #1a1a2e;
+  font-weight: bold;
+  font-size: 0.7rem;
+  border: 3px solid rgba(255,255,255,0.25);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.ability-btn:active { transform: scale(0.92); }
 </style>
 </head>
 <body>
@@ -174,21 +238,18 @@ button:hover {
   <div class="lobby-container">
 
     <h1>🏹 ROBIN'S ARENA</h1>
-    <p class="subtitle">fast arena deathmatch · 2–4 players</p>
+    <p class="subtitle">Camp vs Castle · classes · conquest</p>
 
-    <!-- PANEL: Nombre -->
     <div id="panel-name" class="scroll-panel" data-active="true">
       <input type="text" id="input-name" placeholder="Your callsign" maxlength="12" value="Robin" autofocus/>
       <button id="btn-continue">Continue →</button>
     </div>
 
-    <!-- PANEL: Elegir acción -->
     <div id="panel-choice" class="scroll-panel" data-active="false">
       <button id="btn-host">🏕️ Create a camp</button>
       <button id="btn-join-open" class="btn-secondary">🔗 Join a camp</button>
     </div>
 
-    <!-- PANEL: Unirse -->
     <div id="panel-join" class="scroll-panel" data-active="false">
       <div class="flex-row">
         <button id="btn-refresh-camps" class="btn-secondary" style="flex:1;">↻ Refresh camps</button>
@@ -204,12 +265,13 @@ button:hover {
       <button id="btn-join-back" class="back-btn">← Back</button>
     </div>
 
-    <!-- PANEL: Lobby/Sala -->
     <div id="panel-lobby" class="scroll-panel" data-active="false">
       <h2>🏕️ Camp</h2>
       <p>Code: <strong id="room-code-display">----</strong></p>
       <p id="lobby-status">Waiting for players…</p>
       <ul id="player-roster"></ul>
+      <div id="class-picker" class="class-picker"></div>
+      <p class="class-hint">Pick your class · Ability: Space / Q</p>
       <button id="btn-start-game" class="hidden">⚔️ Start hunt</button>
       <button id="btn-lobby-back" class="back-btn">← Leave</button>
     </div>
@@ -217,7 +279,6 @@ button:hover {
   </div>
 </div>
 
-<!-- Pantalla de juego -->
 <div id="screen-game" class="hidden">
   <div class="game-viewport">
     <canvas id="game-canvas" width="960" height="640"></canvas>
@@ -226,15 +287,16 @@ button:hover {
     <div id="joystick-move" class="joystick"><div class="joystick-knob"></div></div>
     <div id="joystick-aim" class="joystick"><div class="joystick-knob"></div></div>
     <div id="weapon-bar" class="weapon-bar"></div>
+    <button id="btn-ability" type="button" class="ability-btn">ABILITY</button>
   </div>
 </div>
 
-<!-- Scripts -->
 <script src="js/engine/camera.js"></script>
 <script src="js/engine/input.js"></script>
 <script src="js/engine/map.js"></script>
 <script src="js/engine/touch-controls.js"></script>
 <script src="js/entities/weapons.js"></script>
+<script src="js/entities/classes.js"></script>
 <script src="js/entities/player.js"></script>
 <script src="js/entities/projectile.js"></script>
 <script src="js/audio.js"></script>
@@ -243,6 +305,7 @@ button:hover {
 <script src="js/host-sim.js"></script>
 <script src="js/client-sync.js"></script>
 <script src="js/network.js"></script>
+<script src="js/ability-input.js"></script>
 <script src="js/hud.js"></script>
 <script src="js/ui-weapon-bar.js"></script>
 <script src="js/game.js"></script>
