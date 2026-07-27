@@ -2,7 +2,7 @@
  * network.js — PeerJS P2P lobby + camps.
  * No template literals. Classic script (no export).
  */
-const Network = (() => {
+var Network = (function () {
   var MAX_PLAYERS = 6;
   var ID_PREFIX = "ra-";
   var JOIN_TIMEOUT_MS = 12000;
@@ -21,6 +21,7 @@ const Network = (() => {
   var discoverPeer = null;
   var registryAnnounceTimer = null;
   var currentCode = "";
+  var hostReadyCalled = false;
 
   function loadLocalRegistry() {
     try {
@@ -161,11 +162,15 @@ const Network = (() => {
     isHost = true;
     myName = name;
     roster = new Map();
+    hostReadyCalled = false;
 
     if (!ensurePeerJS()) return;
 
     var code = randomCode();
-    if (callbacks.onHostReady) callbacks.onHostReady(code);
+    if (!hostReadyCalled) {
+      hostReadyCalled = true;
+      if (callbacks.onHostReady) callbacks.onHostReady(code);
+    }
 
     try {
       peer = new Peer(ID_PREFIX + code, { debug: 0 });
@@ -189,7 +194,10 @@ const Network = (() => {
       var msg = err && err.message ? err.message : String(err);
       if (err && err.type === "unavailable-id") {
         var code2 = randomCode();
-        if (callbacks.onHostReady) callbacks.onHostReady(code2);
+        if (!hostReadyCalled) {
+          hostReadyCalled = true;
+          if (callbacks.onHostReady) callbacks.onHostReady(code2);
+        }
         try {
           if (peer) peer.destroy();
           peer = new Peer(ID_PREFIX + code2, { debug: 0 });
@@ -389,6 +397,7 @@ const Network = (() => {
     roster = new Map();
     isHost = false;
     myId = null;
+    hostReadyCalled = false;
   }
 
   function getMyId() {
