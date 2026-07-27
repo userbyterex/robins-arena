@@ -1,5 +1,5 @@
 /**
- * main.js — Lobby bulletproof (Continue always works).
+ * main.js — Solo play OK + safe start + visible errors.
  */
 (function () {
   function $(id) { return document.getElementById(id); }
@@ -55,15 +55,13 @@
       playerRoster.appendChild(li);
     });
     if (lobbyStatus) {
-      lobbyStatus.textContent = lastRosterList.length >= 2
-        ? lastRosterList.length + " players ready"
-        : "Waiting for players… (min 2)";
+      lobbyStatus.textContent = lastRosterList.length + " player(s) — host can start anytime";
     }
     if (btnStart) {
       if (isHost) {
         btnStart.classList.remove("hidden");
         btnStart.hidden = false;
-        btnStart.disabled = lastRosterList.length < 2;
+        btnStart.disabled = false;
       } else {
         btnStart.classList.add("hidden");
         btnStart.hidden = true;
@@ -72,15 +70,46 @@
   }
 
   function onStartGame(payload) {
-    if (screenLobby) screenLobby.style.display = "none";
-    if (screenGame) {
-      screenGame.classList.remove("hidden");
-      screenGame.hidden = false;
-      screenGame.style.display = "block";
-    }
-    if (typeof Game !== "undefined") {
-      Game.init(payload, isHost, Network.getMyId());
+    try {
+      if (screenLobby) {
+        screenLobby.style.display = "none";
+        screenLobby.classList.add("hidden");
+      }
+      if (screenGame) {
+        screenGame.classList.remove("hidden");
+        screenGame.hidden = false;
+        screenGame.style.display = "block";
+      }
+
+      var id = null;
+      try { id = Network.getMyId(); } catch (e) {}
+      if (!id && payload && payload.players && payload.players.length) {
+        id = payload.players[0].id;
+      }
+      if (!id) id = "local-host";
+
+      if (typeof Game === "undefined") {
+        alert("Game module missing");
+        return;
+      }
+      if (!payload || !payload.players || !payload.players.length) {
+        payload = {
+          players: [{
+            id: id,
+            name: playerName || "Host",
+            colorIndex: 0,
+            spawnIndex: 0,
+            team: 0,
+            classId: "warrior",
+          }],
+        };
+      }
+
+      Game.init(payload, isHost, id);
       Game.start(canvas);
+    } catch (e) {
+      console.error(e);
+      alert("START ERROR: " + (e.message || e));
     }
   }
 
@@ -90,15 +119,11 @@
     onStartGame: onStartGame,
   };
 
-  // --- CONTINUE (must work even if Network fails) ---
   var btnContinue = $("btn-continue");
   if (btnContinue) {
     btnContinue.onclick = function () {
       var name = inputName ? inputName.value.trim() : "";
-      if (!name) {
-        if (inputName) inputName.focus();
-        return;
-      }
+      if (!name) { if (inputName) inputName.focus(); return; }
       playerName = name;
       showPanel("choice");
     };
@@ -108,8 +133,6 @@
       if (e.key === "Enter" && btnContinue) btnContinue.onclick();
     };
   }
-
-  // Force name panel visible on load
   showPanel("name");
 
   var btnHost = $("btn-host");
@@ -123,8 +146,9 @@
       isHost = true;
       if (lobbyStatus) lobbyStatus.textContent = "Opening camp…";
       showPanel("lobby");
+      renderRoster([{ id: "pending", name: playerName, team: 0 }]);
       if (typeof Network === "undefined") {
-        showError("Network module missing — check network.js");
+        showError("Network missing");
         return;
       }
       Network.hostRoom(playerName, Object.assign({}, sharedCallbacks, {
@@ -140,20 +164,20 @@
   if (btnJoinOpen) {
     btnJoinOpen.onclick = function () {
       showPanel("join");
-      if (campList) {
-        campList.innerHTML = "<li class='empty'>Enter a 4-letter code below</li>";
-      }
+      if (campList) campList.innerHTML = "<li class='empty'>Enter a 4-letter code</li>";
       if (typeof Network !== "undefined" && Network.listOpenCamps) {
         Network.listOpenCamps().then(function (camps) {
           if (!campList) return;
           campList.innerHTML = "";
           if (!camps.length) {
-            campList.innerHTML = "<li class='empty'>No open camps — enter a code</li>";
+            campList.innerHTML = "<li class='empty'>No camps — enter code</li>";
             return;
           }
           camps.forEach(function (c) {
             var li = document.createElement("li");
-            li.innerHTML = "<span class='camp-code'>" + c.code + "</span>";
+            var span = document.createElement("span");
+            span.className = "camp-code";
+            span.textContent = c.code;
             var b = document.createElement("button");
             b.className = "join-btn-small";
             b.textContent = "Join";
@@ -161,11 +185,12 @@
               if (inputCode) inputCode.value = c.code;
               if ($("btn-join-confirm")) $("btn-join-confirm").onclick();
             };
+            li.appendChild(span);
             li.appendChild(b);
             campList.appendChild(li);
           });
         }).catch(function () {
-          if (campList) campList.innerHTML = "<li class='empty'>Use a code below</li>";
+          if (campList) campList.innerHTML = "<li class='empty'>Use code below</li>";
         });
       }
     };
@@ -194,7 +219,7 @@
       showPanel("lobby");
       if (roomCodeDisplay) roomCodeDisplay.textContent = code;
       if (typeof Network === "undefined") {
-        showError("Network module missing");
+        showError("Network missing");
         return;
       }
       Network.joinRoom(code, playerName, Object.assign({}, sharedCallbacks, {
@@ -218,12 +243,31 @@
 
   if (btnStart) {
     btnStart.onclick = function () {
-      if (!isHost || lastRosterList.length < 2) return;
+      if (!isHost) return;
+
+      var myId = null;
+      try { myId = Network.getMyId(); } catch (e) {}
+
+      var players = (lastRosterList && lastRosterList.length) ? lastRosterList.slice() : [];
+
+      if (myId) {
+        var found = false;
+        for (var i = 0; i < players.length; i++) {
+          if (players[i].id === myId) found = true;
+        }
+        if (!found) {
+          players.unshift({ id: myId, name: playerName || "Host", team: 0 });
+        }
+      } else if (!players.length) {
+        myId = "local-host";
+        players = [{ id: myId, name: playerName || "Host", team: 0 }];
+      }
+
       var payload = {
-        players: lastRosterList.map(function (p, i) {
+        players: players.map(function (p, i) {
           return {
             id: p.id,
-            name: p.name,
+            name: p.name || ("P" + i),
             colorIndex: i,
             spawnIndex: i,
             team: (typeof p.team === "number") ? p.team : (i % 2),
@@ -231,7 +275,16 @@
           };
         }),
       };
-      Network.startGame(payload);
+
+      try {
+        if (typeof Network !== "undefined" && Network.startGame) {
+          Network.startGame(payload);
+        } else {
+          onStartGame(payload);
+        }
+      } catch (e) {
+        alert("Start failed: " + (e.message || e));
+      }
     };
   }
 })();
