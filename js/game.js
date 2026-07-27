@@ -1,6 +1,6 @@
 /**
  * game.js — Conquest + classes + ability FX.
- * Classic script, paste-safe.
+ * Classic script (NO import/export).
  */
 const Game = (() => {
   var canvas, ctx;
@@ -26,19 +26,22 @@ const Game = (() => {
   }
 
   function playEventFX(events) {
+    if (!events) return;
     for (var i = 0; i < events.length; i++) {
       var ev = events[i];
-      if (ev.kind === "melee") AudioFX.meleeSwing();
-      else if (ev.kind === "ranged") { AudioFX.shoot(); Particles.muzzlePuff(ev.x, ev.y); }
-      else if (ev.kind === "hit" || ev.kind === "structure_hit") { AudioFX.hit(); Particles.hitSpark(ev.x || 0, ev.y || 0); }
-      else if (ev.kind === "death") { AudioFX.death(); Particles.deathBurst(ev.x, ev.y); }
-      else if (ev.kind === "capture" || ev.kind === "spawn") AudioFX.hit();
-      else if (ev.kind === "ability") {
-        AudioFX.hit();
-        Particles.deathBurst(ev.x, ev.y);
-      }
-      else if (ev.kind === "heal") {
-        Particles.hitSpark(ev.x, ev.y);
+      if (ev.kind === "melee" && window.AudioFX) AudioFX.meleeSwing();
+      else if (ev.kind === "ranged") {
+        if (window.AudioFX) AudioFX.shoot();
+        if (window.Particles) Particles.muzzlePuff(ev.x, ev.y);
+      } else if (ev.kind === "hit" || ev.kind === "structure_hit") {
+        if (window.AudioFX) AudioFX.hit();
+        if (window.Particles) Particles.hitSpark(ev.x || 0, ev.y || 0);
+      } else if (ev.kind === "death") {
+        if (window.AudioFX) AudioFX.death();
+        if (window.Particles) Particles.deathBurst(ev.x, ev.y);
+      } else if (ev.kind === "ability" || ev.kind === "heal") {
+        if (window.AudioFX) AudioFX.hit();
+        if (window.Particles) Particles.deathBurst(ev.x, ev.y);
       }
     }
   }
@@ -57,12 +60,6 @@ const Game = (() => {
     if (npc.isRam) {
       ctx.fillStyle = "#4a3720";
       ctx.fillRect(-20, -10, 36, 20);
-      ctx.strokeStyle = "#2a1e10";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(-20, -10, 36, 20);
-      ctx.fillStyle = "#2a2a2a";
-      ctx.beginPath(); ctx.arc(-12, 10, 5, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(8, 10, 5, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = "#8a8a8a";
       ctx.beginPath();
       ctx.moveTo(16, -8); ctx.lineTo(28, 0); ctx.lineTo(16, 8); ctx.closePath();
@@ -72,18 +69,15 @@ const Game = (() => {
     } else {
       ctx.fillStyle = col;
       ctx.fillRect(-size * 0.7, -size * 0.7, size * 1.4, size * 1.4);
-      ctx.strokeStyle = "rgba(0,0,0,0.35)";
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(-size * 0.7, -size * 0.7, size * 1.4, size * 1.4);
       ctx.fillStyle = "#d4b896";
       ctx.beginPath();
       ctx.arc(0, -size * 1.1, size * 0.45, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
-    ctx.font = npc.isRam ? "12px VT323, monospace" : "11px VT323, monospace";
+    ctx.font = "11px VT323, monospace";
     ctx.textAlign = "center";
-    ctx.fillStyle = npc.isRam ? "#f0c040" : "#e8eef4";
+    ctx.fillStyle = "#e8eef4";
     ctx.fillText(npc.name || "NPC", 0, -size - 15);
     var barW = npc.isRam ? 36 : 24;
     var pct = (npc.hp || 0) / (npc.maxHp || 40);
@@ -100,7 +94,7 @@ const Game = (() => {
     currentWeapon = "sword";
     shakeMag = 0;
     prevLocalHp = null;
-    Particles.clear();
+    if (window.Particles) Particles.clear();
 
     if (isHost) {
       HostSim.init(payload.players);
@@ -121,20 +115,22 @@ const Game = (() => {
     Camera.setViewport(canvas.width, canvas.height);
     vignetteGradient = buildVignette();
     Input.init(canvas);
-    TouchControls.init();
+    if (window.TouchControls) TouchControls.init();
 
     function selectWeapon(w) {
       currentWeapon = w;
-      WeaponBar.setActive(w);
+      if (window.WeaponBar) WeaponBar.setActive(w);
     }
-    Input.onWeaponSelect(selectWeapon);
-    WeaponBar.init(document.getElementById("weapon-bar"), selectWeapon);
-    WeaponBar.setActive(currentWeapon);
-    AudioFX.resume();
+    if (Input.onWeaponSelect) Input.onWeaponSelect(selectWeapon);
+    if (window.WeaponBar) {
+      WeaponBar.init(document.getElementById("weapon-bar"), selectWeapon);
+      WeaponBar.setActive(currentWeapon);
+    }
+    if (window.AudioFX) AudioFX.resume();
 
     running = true;
     lastFrameTime = performance.now();
-    netIntervalId = setInterval(networkTick, 1000 / HostSim.TICK_RATE);
+    netIntervalId = setInterval(networkTick, 1000 / (HostSim.TICK_RATE || 20));
     rafId = requestAnimationFrame(renderLoop);
   }
 
@@ -145,13 +141,13 @@ const Game = (() => {
   }
 
   function buildLocalInput() {
-    var move = Input.getMoveVector();
+    var move = Input.getMoveVector ? Input.getMoveVector() : { dx: 0, dy: 0 };
     return {
       type: "input",
-      dx: move.dx,
-      dy: move.dy,
-      angle: Input.getAimAngle(),
-      attack: Input.isAttacking(),
+      dx: move.dx || 0,
+      dy: move.dy || 0,
+      angle: Input.getAimAngle ? Input.getAimAngle() : 0,
+      attack: Input.isAttacking ? Input.isAttacking() : false,
       weapon: currentWeapon,
       ability: (window.AbilityInput && AbilityInput.consume()) ? true : false,
     };
@@ -161,7 +157,7 @@ const Game = (() => {
     var input = buildLocalInput();
     if (isHost) {
       HostSim.setInput(myId, input);
-      HostSim.tick(1 / HostSim.TICK_RATE);
+      HostSim.tick(1 / (HostSim.TICK_RATE || 20));
       playEventFX(HostSim.getTickEvents());
       Network.send(HostSim.getSnapshotPayload());
     } else {
@@ -225,19 +221,19 @@ const Game = (() => {
     var shakeY = shakeMag > 0.3 ? (Math.random() - 0.5) * shakeMag : 0;
 
     Camera.follow(localPlayer.x, localPlayer.y);
-    Particles.update(dt);
-    WeaponBar.setActive(localPlayer.weapon);
+    if (window.Particles) Particles.update(dt);
+    if (window.WeaponBar) WeaponBar.setActive(localPlayer.weapon);
 
     ctx.save();
     ctx.translate(shakeX, shakeY);
 
-    GameMap.draw(ctx, Camera.x, Camera.y, Camera.viewW, Camera.viewH, { flags: flags });
+    if (window.GameMap) GameMap.draw(ctx, Camera.x, Camera.y, Camera.viewW, Camera.viewH, { flags: flags });
 
     var drawOrder = players.slice().sort(function (a, b) { return a.y - b.y; });
     for (var i = 0; i < drawOrder.length; i++) {
       var p = drawOrder[i];
       var s = Camera.worldToScreen(p.x, p.y);
-      drawPlayer(ctx, s.x, s.y, p);
+      if (typeof drawPlayer === "function") drawPlayer(ctx, s.x, s.y, p);
     }
     for (var ni = 0; ni < npcs.length; ni++) {
       var n = npcs[ni];
@@ -248,27 +244,33 @@ const Game = (() => {
     for (var pi = 0; pi < projectiles.length; pi++) {
       var proj = projectiles[pi];
       var ps = Camera.worldToScreen(proj.x, proj.y);
-      drawProjectile(ctx, ps.x, ps.y, proj);
+      if (typeof drawProjectile === "function") drawProjectile(ctx, ps.x, ps.y, proj);
     }
-    Particles.draw(ctx, function (wx, wy) { return Camera.worldToScreen(wx, wy); });
+    if (window.Particles) {
+      Particles.draw(ctx, function (wx, wy) { return Camera.worldToScreen(wx, wy); });
+    }
 
     ctx.restore();
 
-    ctx.fillStyle = vignetteGradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (vignetteGradient) {
+      ctx.fillStyle = vignetteGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
-    HUD.draw(ctx, {
-      localPlayer: localPlayer,
-      allPlayers: players,
-      flags: flags,
-      killfeed: killfeed,
-      timeLeft: timeLeft,
-      matchOver: matchOver,
-      winnerName: winnerName,
-      viewW: canvas.width,
-      viewH: canvas.height,
-      serverTime: serverTime,
-    });
+    if (window.HUD) {
+      HUD.draw(ctx, {
+        localPlayer: localPlayer,
+        allPlayers: players,
+        flags: flags,
+        killfeed: killfeed,
+        timeLeft: timeLeft,
+        matchOver: matchOver,
+        winnerName: winnerName,
+        viewW: canvas.width,
+        viewH: canvas.height,
+        serverTime: serverTime,
+      });
+    }
 
     rafId = requestAnimationFrame(renderLoop);
   }
