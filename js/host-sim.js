@@ -2,7 +2,7 @@
  * host-sim.js — Conquest + class abilities (Warrior/Ranger/Mage/Monk).
  * Paste-safe.
  */
-const HostSim = (() => {
+var HostSim = (function () {
   var TICK_RATE = 20;
   var MATCH_DURATION = 480;
   var CAPTURE_TIME = 3.0;
@@ -522,33 +522,5 @@ const HostSim = (() => {
           hp: n.hp, maxHp: n.maxHp, alive: n.alive, color: n.color, colorIndex: n.colorIndex,
         };
       }),
-flags: s.flags.map(function (f) {
-        return {
-          id: f.id, name: f.name, x: f.x, y: f.y, radius: f.radius,
-          team: f.team, progress: f.progress,
-          structureHp: f.structureHp, structureMax: f.structureMax,
-        };
-      }),
-      killfeed: s.killfeed,
-      matchOver: s.matchOver,
-      winnerName: s.winnerName,
-      timeLeft: s.timeLeft,
-      events: tickEvents,
-      serverTime: now,
-    };
-  }
-
-  function getTickEvents() { return tickEvents; }
-
-  return {
-    init: init,
-    setInput: setInput,
-    tick: tick,
-    getState: getState,
-    getSnapshotPayload: getSnapshotPayload,
-    getTickEvents: getTickEvents,
-    markDisconnected: markDisconnected,
-    TICK_RATE: TICK_RATE,
-  };
-})();
-window.HostSim = HostSim;
+      flags: s.flags.map(function (f) {
+   
