@@ -1,5 +1,6 @@
 /**
- * hud.js — Conquest HUD (paste-safe, no template literals).
+ * hud.js — Conquest HUD + class ability cooldown.
+ * Paste-safe, no template literals.
  */
 const HUD = (() => {
   var _gradCache = new Map();
@@ -59,43 +60,63 @@ const HUD = (() => {
     var winnerName = data.winnerName;
     var viewW = data.viewW;
     var viewH = data.viewH;
+    var serverTime = data.serverTime || (performance.now() / 1000);
 
     ctx.save();
     ctx.font = "18px VT323, monospace";
     ctx.shadowColor = "rgba(0,0,0,0.6)";
 
     if (localPlayer) {
+      var maxHp = localPlayer.maxHp || (typeof MAX_HP !== "undefined" ? MAX_HP : 100);
+      var cls = (typeof getClass === "function") ? getClass(localPlayer.classId || "warrior") : null;
+
       ctx.shadowBlur = 0;
-      var grad = cachedPanelGradient(ctx, "hpPanel", 14, 14, 14, 96, [
+      var grad = cachedPanelGradient(ctx, "hpPanel", 14, 14, 14, 110, [
         [0, "rgba(20,24,28,0.88)"], [1, "rgba(20,24,28,0.55)"]
       ]);
       ctx.fillStyle = grad;
-      panel(ctx, 12, 12, 220, 90, 6);
+      panel(ctx, 12, 12, 230, 108, 6);
       ctx.fill();
       ctx.strokeStyle = localPlayer.team === 0 ? "rgba(61,158,88,0.5)" : "rgba(90,140,200,0.5)";
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      var pct = Math.max(0, localPlayer.hp / MAX_HP);
+      var pct = Math.max(0, localPlayer.hp / maxHp);
       ctx.fillStyle = "#0a0c0e";
-      panel(ctx, 22, 22, 200, 22, 3); ctx.fill();
+      panel(ctx, 22, 22, 210, 22, 3); ctx.fill();
       ctx.fillStyle = pct > 0.4 ? "#3dce5c" : "#d13a35";
-      panel(ctx, 24, 24, 196 * pct, 18, 2); ctx.fill();
+      panel(ctx, 24, 24, 206 * pct, 18, 2); ctx.fill();
 
       ctx.fillStyle = "#e8eef4";
       ctx.font = "14px VT323, monospace";
       ctx.textAlign = "center";
-      ctx.fillText(Math.round(localPlayer.hp) + " / " + MAX_HP + " HP", 122, 37);
+      ctx.fillText(Math.round(localPlayer.hp) + " / " + maxHp + " HP", 127, 37);
 
-      var weapon = WEAPONS[localPlayer.weapon];
+      var weapon = WEAPONS[localPlayer.weapon] || { icon: "?", name: "?" };
       ctx.textAlign = "left";
-      ctx.font = "20px VT323, monospace";
+      ctx.font = "18px VT323, monospace";
       ctx.fillStyle = "#f0c040";
-      ctx.fillText(weapon.icon + " " + weapon.name, 24, 62);
+      ctx.fillText(weapon.icon + " " + weapon.name, 24, 60);
 
       ctx.font = "14px VT323, monospace";
       ctx.fillStyle = localPlayer.team === 0 ? "#3d9e58" : "#5a8ec8";
-      ctx.fillText(localPlayer.team === 0 ? "TEAM CAMP" : "TEAM CASTLE", 24, 82);
+      var classLabel = cls ? (cls.icon + " " + cls.name) : "Warrior";
+      ctx.fillText(classLabel + " · " + (localPlayer.team === 0 ? "CAMP" : "CASTLE"), 24, 80);
+
+      var ab = cls && cls.ability ? cls.ability : null;
+      if (ab) {
+        var cdLeft = Math.max(0, (localPlayer.abilityCdUntil || 0) - serverTime);
+        var cdPct = ab.cooldown > 0 ? 1 - (cdLeft / ab.cooldown) : 1;
+        ctx.fillStyle = "#0a0c0e";
+        panel(ctx, 22, 90, 210, 14, 3); ctx.fill();
+        ctx.fillStyle = cdLeft > 0 ? "#5a4a20" : "#f0c040";
+        panel(ctx, 24, 92, 206 * Math.max(0, Math.min(1, cdPct)), 10, 2); ctx.fill();
+        ctx.fillStyle = "#e8eef4";
+        ctx.font = "12px VT323, monospace";
+        ctx.textAlign = "center";
+        var abText = cdLeft > 0 ? (ab.name + " " + cdLeft.toFixed(1) + "s") : (ab.name + " READY [Space]");
+        ctx.fillText(abText, 127, 101);
+      }
     }
 
     ctx.shadowBlur = 4;
@@ -130,7 +151,7 @@ const HUD = (() => {
       ctx.fillStyle = "#e8eef4";
       ctx.font = "11px VT323, monospace";
       ctx.textAlign = "left";
-      var short = f.name.split(" ")[0];
+      var short = (f.name || "").split(" ")[0];
       ctx.fillText(short, x + 24, stripY + 18);
       if (f.progress > 0 && f.progress < 1) {
         ctx.strokeStyle = "#f0c040";
@@ -151,8 +172,10 @@ const HUD = (() => {
     ctx.textAlign = "right";
     ctx.font = "15px VT323, monospace";
     sorted.forEach(function (p, i) {
+      var c = (typeof getClass === "function") ? getClass(p.classId || "warrior") : null;
+      var icon = c ? c.icon + " " : "";
       ctx.fillStyle = p.team === 0 ? "#3d9e58" : "#5a8ec8";
-      ctx.fillText(p.name + "  " + p.score, viewW - 24, 30 + i * 22);
+      ctx.fillText(icon + p.name + "  " + p.score, viewW - 24, 30 + i * 22);
     });
 
     ctx.font = "14px VT323, monospace";
@@ -200,7 +223,7 @@ const HUD = (() => {
     ctx.textAlign = "center";
     ctx.font = "12px VT323, monospace";
     ctx.fillStyle = "rgba(232,238,244,0.4)";
-    ctx.fillText("Stand on zones to capture · 3 NPCs/zone · 3rd = Ram destroys enemy HQ", viewW / 2, viewH - 56);
+    ctx.fillText("Capture zones · NPCs · Ram destroys HQ · Space = Ability", viewW / 2, viewH - 56);
 
     if (localPlayer && localPlayer.alive && !matchOver) {
       drawCrosshair(ctx, viewW, viewH);
