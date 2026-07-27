@@ -1,8 +1,7 @@
 /**
- * combat.js — Combat + respawns (conquest-aware).
- * No template literals (paste-safe).
+ * combat.js — Pure combat resolution (host only).
  */
-const Combat = (() => {
+var Combat = (function () {
 
   function angleDiff(a, b) {
     var d = a - b;
@@ -11,33 +10,23 @@ const Combat = (() => {
     return Math.abs(d);
   }
 
-  function tryMeleeAttack(attacker, targets) {
+  function tryMeleeAttack(attacker, players) {
     var weapon = WEAPONS[attacker.weapon];
     var events = [];
     var halfAngle = (weapon.angle * Math.PI) / 180 / 2;
 
-    for (var i = 0; i < targets.length; i++) {
-      var target = targets[i];
+    for (var i = 0; i < players.length; i++) {
+      var target = players[i];
       if (target.id === attacker.id || !target.alive) continue;
-      if (target.team != null && attacker.team != null && target.team === attacker.team) continue;
       var dx = target.x - attacker.x;
       var dy = target.y - attacker.y;
       var dist = Math.hypot(dx, dy);
-      var radius = target.maxHp != null ? 12 : PLAYER_RADIUS;
-      if (dist > weapon.range + radius) continue;
+      if (dist > weapon.range + PLAYER_RADIUS) continue;
       var angleToTarget = Math.atan2(dy, dx);
       if (angleDiff(angleToTarget, attacker.angle) > halfAngle) continue;
 
       var killed = applyDamage(target, weapon.damage);
-      events.push({
-        attackerId: attacker.id,
-        targetId: target.id,
-        weaponId: weapon.id,
-        damage: weapon.damage,
-        killed: killed,
-        x: target.x,
-        y: target.y,
-      });
+      events.push({ attackerId: attacker.id, targetId: target.id, weaponId: weapon.id, damage: weapon.damage, killed: killed, x: target.x, y: target.y });
     }
     return events;
   }
@@ -47,15 +36,13 @@ const Combat = (() => {
     target.lastHitFlashAt = performance.now() / 1000;
     if (target.hp === 0 && target.alive) {
       target.alive = false;
-      if (target.respawnAt !== undefined) {
-        target.respawnAt = performance.now() / 1000 + RESPAWN_SECONDS;
-      }
+      target.respawnAt = performance.now() / 1000 + RESPAWN_SECONDS;
       return true;
     }
     return false;
   }
 
-  function updateProjectiles(projectiles, targets, dt) {
+  function updateProjectiles(projectiles, players, dt) {
     var survivors = [];
     var events = [];
 
@@ -68,23 +55,13 @@ const Combat = (() => {
       if (p.ttl <= 0 || GameMap.pointBlocked(p.x, p.y)) continue;
 
       var hit = false;
-      for (var j = 0; j < targets.length; j++) {
-        var target = targets[j];
+      for (var j = 0; j < players.length; j++) {
+        var target = players[j];
         if (target.id === p.ownerId || !target.alive) continue;
-        if (target.team != null && p.ownerTeam != null && target.team === p.ownerTeam) continue;
-        var radius = target.maxHp != null ? 12 : PLAYER_RADIUS;
         var dist = Math.hypot(target.x - p.x, target.y - p.y);
-        if (dist <= radius + p.radius) {
+        if (dist <= PLAYER_RADIUS + p.radius) {
           var killed = applyDamage(target, p.damage);
-          events.push({
-            attackerId: p.ownerId,
-            targetId: target.id,
-            weaponId: p.weaponId,
-            damage: p.damage,
-            killed: killed,
-            x: target.x,
-            y: target.y,
-          });
+          events.push({ attackerId: p.ownerId, targetId: target.id, weaponId: p.weaponId, damage: p.damage, killed: killed, x: target.x, y: target.y });
           hit = true;
           break;
         }
@@ -99,30 +76,15 @@ const Combat = (() => {
     for (var i = 0; i < players.length; i++) {
       var p = players[i];
       if (!p.alive && Number.isFinite(p.respawnAt) && now >= p.respawnAt) {
-        var info = spawnAssignment[p.id];
-        if (info && info.x != null) {
-          p.x = info.x;
-          p.y = info.y;
-        } else if (typeof info === "number") {
-          var spawn = GameMap.SPAWNS[info % GameMap.SPAWNS.length];
-          p.x = spawn.x;
-          p.y = spawn.y;
-        } else {
-          var teamSpawns = GameMap.SPAWNS.filter(function (s) { return s.team === p.team; });
-          var sp = teamSpawns[0] || GameMap.SPAWNS[0];
-          p.x = sp.x;
-          p.y = sp.y;
-        }
+        var idx = spawnAssignment.get(p.id);
+        var spawn = GameMap.SPAWNS[(idx != null ? idx : 0) % GameMap.SPAWNS.length];
+        p.x = spawn.x;
+        p.y = spawn.y;
         p.hp = MAX_HP;
         p.alive = true;
       }
     }
   }
 
-  return {
-    tryMeleeAttack: tryMeleeAttack,
-    applyDamage: applyDamage,
-    updateProjectiles: updateProjectiles,
-    processRespawns: processRespawns,
-  };
+  return { tryMeleeAttack: tryMeleeAttack, applyDamage: applyDamage, updateProjectiles: updateProjectiles, processRespawns: processRespawns };
 })();
