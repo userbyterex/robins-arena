@@ -2,7 +2,7 @@
  * client-sync.js — Snapshot interpolation (players + npcs + flags).
  * No template literals (paste-safe).
  */
-const ClientSync = (() => {
+var ClientSync = (function () {
   var latest = null;
   var rendered = new Map();
   var SNAP_DISTANCE = 80;
