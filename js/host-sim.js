@@ -1,15 +1,16 @@
 /**
- * host-sim.js — Conquest: zone capture, per-zone NPCs (max 3), 3rd = battering ram.
+ * host-sim.js — Conquest: zones, NPCs (max 3), 3rd = battering ram.
+ * NPCs use GameMap.tryMove so they don't stick on crates.
  * No template literals (paste-safe).
  */
 const HostSim = (() => {
   const TICK_RATE = 20;
   const MATCH_DURATION = 480;
-  const CAPTURE_TIME = 3.5;
+  const CAPTURE_TIME = 3.2;
   const NPC_PER_ZONE = 3;
-  const SPAWN_INTERVAL = 6;
-  const HQ_MAX_HP = 300;
-  const RAM_STRUCTURE_DAMAGE = 18;
+  const SPAWN_INTERVAL = 5.5;
+  const HQ_MAX_HP = 280;
+  const RAM_STRUCTURE_DAMAGE = 22;
 
   var players = new Map();
   var projectiles = [];
@@ -30,28 +31,33 @@ const HostSim = (() => {
     nymphs: {
       name: "Nymphs Grove",
       units: [
-        { name: "Sprite", hp: 35, speed: 140, damage: 10, range: 32, color: "#7dcea0" },
-        { name: "Dryad", hp: 50, speed: 120, damage: 14, range: 36, color: "#52b788" },
-        { name: "Grove Ram", hp: 160, speed: 55, damage: 8, range: 40, isRam: true, color: "#2d6a4f" },
+        { name: "Sprite", hp: 35, speed: 155, damage: 10, range: 32, color: "#7dcea0" },
+        { name: "Dryad", hp: 55, speed: 130, damage: 15, range: 36, color: "#52b788" },
+        { name: "Grove Ram", hp: 170, speed: 62, damage: 8, range: 42, isRam: true, color: "#2d6a4f" },
       ],
     },
     village: {
       name: "Village",
       units: [
-        { name: "Militia", hp: 45, speed: 115, damage: 12, range: 34, color: "#c9a227" },
-        { name: "Captain", hp: 65, speed: 100, damage: 16, range: 38, color: "#b08900" },
-        { name: "War Ram", hp: 180, speed: 50, damage: 10, range: 42, isRam: true, color: "#7a5c00" },
+        { name: "Militia", hp: 48, speed: 125, damage: 13, range: 34, color: "#c9a227" },
+        { name: "Captain", hp: 70, speed: 110, damage: 17, range: 38, color: "#b08900" },
+        { name: "War Ram", hp: 190, speed: 58, damage: 10, range: 44, isRam: true, color: "#7a5c00" },
       ],
     },
     outpost: {
       name: "Outpost",
       units: [
-        { name: "Sentry", hp: 40, speed: 125, damage: 11, range: 34, color: "#7aa2c8" },
-        { name: "Knight", hp: 70, speed: 95, damage: 18, range: 40, color: "#4a7ab0" },
-        { name: "Siege Ram", hp: 200, speed: 48, damage: 12, range: 44, isRam: true, color: "#2c4a6e" },
+        { name: "Sentry", hp: 42, speed: 140, damage: 12, range: 34, color: "#7aa2c8" },
+        { name: "Knight", hp: 75, speed: 105, damage: 19, range: 40, color: "#4a7ab0" },
+        { name: "Siege Ram", hp: 210, speed: 55, damage: 12, range: 46, isRam: true, color: "#2c4a6e" },
       ],
     },
   };
+
+  function moveEntity(x, y, dx, dy, radius) {
+    if (GameMap.tryMove) return GameMap.tryMove(x, y, dx, dy, radius);
+    return GameMap.resolveCircleCollision(x + dx, y + dy, radius);
+  }
 
   function init(playerConfigs) {
     players = new Map();
@@ -206,8 +212,8 @@ const HostSim = (() => {
       var tier = owned;
       var def = flavor.units[tier] || flavor.units[0];
       var angle = f.team === 0 ? 0 : Math.PI;
-      var ox = (Math.random() - 0.5) * 50;
-      var oy = (Math.random() - 0.5) * 50;
+      var ox = (Math.random() - 0.5) * 40;
+      var oy = (Math.random() - 0.5) * 40;
 
       npcs.push({
         id: "npc-" + (npcIdCounter++),
@@ -225,10 +231,11 @@ const HostSim = (() => {
         speed: def.speed,
         damage: def.damage,
         range: def.range,
-        attackCooldown: def.isRam ? 1.4 : 0.85,
+        attackCooldown: def.isRam ? 1.25 : 0.8,
         lastAttackAt: 0,
         color: def.color,
         colorIndex: f.team === 0 ? 0 : 1,
+        stuckTimer: 0,
       });
       tickEvents.push({ kind: "spawn", x: f.x, y: f.y, team: f.team, isRam: !!def.isRam });
     });
@@ -240,12 +247,15 @@ const HostSim = (() => {
       if (!n.alive) continue;
 
       var target = null;
-      var bestD = n.isRam ? 900 : 420;
+      var bestD = n.isRam ? 1000 : 480;
 
       if (n.isRam) {
-        var enemyHq = flags.find(function (f) {
-          return n.team === 0 ? f.id === "castle_hq" : f.id === "camp_hq";
-        });
+        var enemyHq = null;
+        for (var fi = 0; fi < flags.length; fi++) {
+          var ff = flags[fi];
+          if (n.team === 0 && ff.id === "castle_hq") enemyHq = ff;
+          if (n.team === 1 && ff.id === "camp_hq") enemyHq = ff;
+        }
         if (enemyHq) {
           target = {
             x: enemyHq.x, y: enemyHq.y, alive: true, team: 1 - n.team,
@@ -255,23 +265,27 @@ const HostSim = (() => {
         }
       }
 
-      if (!n.isRam || bestD > 120) {
+      if (!n.isRam || bestD > 100) {
         players.forEach(function (p) {
           if (!p.alive || p.team === n.team) return;
           var d = Math.hypot(p.x - n.x, p.y - n.y);
           if (d < bestD) { bestD = d; target = p; }
         });
-        npcs.forEach(function (o) {
-          if (!o.alive || o.team === n.team || o.id === n.id) return;
-          var d = Math.hypot(o.x - n.x, o.y - n.y);
-          if (d < bestD) { bestD = d; target = o; }
-        });
+        for (var j = 0; j < npcs.length; j++) {
+          var o = npcs[j];
+          if (!o.alive || o.team === n.team || o.id === n.id) continue;
+          var d2 = Math.hypot(o.x - n.x, o.y - n.y);
+          if (d2 < bestD) { bestD = d2; target = o; }
+        }
       }
 
       if (!target && !n.isRam) {
-        var hq = flags.find(function (f) {
-          return n.team === 0 ? f.id === "castle_hq" : f.id === "camp_hq";
-        });
+        var hq = null;
+        for (var hi = 0; hi < flags.length; hi++) {
+          var hf = flags[hi];
+          if (n.team === 0 && hf.id === "castle_hq") hq = hf;
+          if (n.team === 1 && hf.id === "camp_hq") hq = hf;
+        }
         if (hq) {
           target = { x: hq.x, y: hq.y, alive: true, team: 1 - n.team, isStructure: true, flag: hq };
           bestD = Math.hypot(hq.x - n.x, hq.y - n.y);
@@ -281,11 +295,34 @@ const HostSim = (() => {
       if (!target) continue;
 
       n.angle = Math.atan2(target.y - n.y, target.x - n.x);
+      var rad = n.isRam ? 16 : 12;
 
       if (bestD > n.range) {
-        var nx = n.x + Math.cos(n.angle) * n.speed * dt;
-        var ny = n.y + Math.sin(n.angle) * n.speed * dt;
-        var resolved = GameMap.resolveCircleCollision(nx, ny, n.isRam ? 16 : 12);
+        var stepX = Math.cos(n.angle) * n.speed * dt;
+        var stepY = Math.sin(n.angle) * n.speed * dt;
+        var prevX = n.x, prevY = n.y;
+        var resolved = moveEntity(n.x, n.y, stepX, stepY, rad);
+        var moved = Math.hypot(resolved.x - prevX, resolved.y - prevY);
+
+        if (moved < 0.5) {
+          n.stuckTimer = (n.stuckTimer || 0) + dt;
+          var side = (i % 2 === 0) ? 1 : -1;
+          var alt = moveEntity(n.x, n.y, -stepY * side * 1.2, stepX * side * 1.2, rad);
+          if (Math.hypot(alt.x - prevX, alt.y - prevY) > moved) {
+            resolved = alt;
+          } else {
+            alt = moveEntity(n.x, n.y, -stepY * -side * 1.2, stepX * -side * 1.2, rad);
+            if (Math.hypot(alt.x - prevX, alt.y - prevY) > moved) resolved = alt;
+          }
+          if (n.stuckTimer > 1.2) {
+            n.x += (Math.random() - 0.5) * 40;
+            n.y += (Math.random() - 0.5) * 40;
+            resolved = GameMap.resolveCircleCollision(n.x, n.y, rad);
+            n.stuckTimer = 0;
+          }
+        } else {
+          n.stuckTimer = 0;
+        }
         n.x = resolved.x;
         n.y = resolved.y;
       } else if (now - n.lastAttackAt >= n.attackCooldown) {
@@ -306,6 +343,7 @@ const HostSim = (() => {
               weaponId: "axe",
               at: now,
             });
+            killfeed = killfeed.slice(0, 5);
           }
         } else if (target.hp != null) {
           target.hp = Math.max(0, target.hp - n.damage);
@@ -331,9 +369,12 @@ const HostSim = (() => {
       var input = inputs.get(player.id);
       if (!input || !player.alive) return;
 
-      var nx = player.x + input.dx * PLAYER_SPEED * dt;
-      var ny = player.y + input.dy * PLAYER_SPEED * dt;
-      var resolved = GameMap.resolveCircleCollision(nx, ny, PLAYER_RADIUS);
+      var resolved = moveEntity(
+        player.x, player.y,
+        input.dx * PLAYER_SPEED * dt,
+        input.dy * PLAYER_SPEED * dt,
+        PLAYER_RADIUS
+      );
       player.x = resolved.x;
       player.y = resolved.y;
       player.angle = input.angle;
