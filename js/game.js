@@ -1,330 +1,370 @@
 /**
- * main.js — Complete lobby + safe game start (solo OK for testing).
+ * game.js — Defensive conquest render + localPlayer fallback.
+ * Classic script, no import/export.
  */
-(function () {
-  function $(id) { return document.getElementById(id); }
-
-  var panels = {
-    name: $("panel-name"),
-    choice: $("panel-choice"),
-    join: $("panel-join"),
-    lobby: $("panel-lobby"),
-  };
-  var screenLobby = $("screen-lobby");
-  var screenGame = $("screen-game");
-  var canvas = $("game-canvas");
-  var inputName = $("input-name");
-  var inputCode = $("input-code");
-  var roomCodeDisplay = $("room-code-display");
-  var lobbyStatus = $("lobby-status");
-  var playerRoster = $("player-roster");
-  var btnStart = $("btn-start-game");
-  var campList = $("camp-list");
-  var classPicker = $("class-picker");
-
-  var playerName = "";
+const Game = (() => {
+  var canvas, ctx;
   var isHost = false;
-  var lastRosterList = [];
-  var selectedClass = "warrior";
-  var playerClassMap = {};
+  var myId = null;
+  var rafId = null;
+  var netIntervalId = null;
+  var lastFrameTime = 0;
+  var currentWeapon = "sword";
+  var running = false;
+  var vignetteGradient = null;
+  var shakeMag = 0;
+  var prevLocalHp = null;
+  var lastError = null;
 
-  function showPanel(name) {
-    Object.keys(panels).forEach(function (key) {
-      var el = panels[key];
-      if (!el) return;
-      var on = key === name;
-      el.setAttribute("data-active", on ? "true" : "false");
-      el.style.display = on ? "flex" : "none";
-    });
+  function buildVignette() {
+    if (!ctx || !canvas) return null;
+    var g = ctx.createRadialGradient(
+      canvas.width / 2, canvas.height / 2, canvas.height * 0.35,
+      canvas.width / 2, canvas.height / 2, canvas.height * 0.75
+    );
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(1, "rgba(0,0,0,0.45)");
+    return g;
   }
 
-  function showError(err) {
-    var msg = err && err.message ? err.message : String(err || "error");
-    if (lobbyStatus) lobbyStatus.textContent = "Error: " + msg;
-    console.error(msg);
-  }
-
-  function buildClassPicker() {
-    if (!classPicker) return;
-    classPicker.innerHTML = "";
-    var order = (typeof CLASS_ORDER !== "undefined") ? CLASS_ORDER : ["warrior", "ranger", "mage", "monk"];
-    order.forEach(function (id) {
-      var c = (typeof getClass === "function") ? getClass(id) : { id: id, name: id, icon: "?", tagline: "", color: "#888" };
-      var btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "class-btn" + (id === selectedClass ? " selected" : "");
-      btn.innerHTML = "<span class='class-icon'>" + (c.icon || "?") + "</span>" +
-        "<span class='class-name'>" + (c.name || id) + "</span>" +
-        "<span class='class-tag'>" + (c.tagline || "") + "</span>";
-      btn.style.borderColor = c.color || "#888";
-      btn.onclick = function () {
-        selectedClass = id;
-        var all = classPicker.querySelectorAll(".class-btn");
-        for (var i = 0; i < all.length; i++) all[i].classList.remove("selected");
-        btn.classList.add("selected");
-        if (typeof Network !== "undefined" && Network.send) {
-          Network.send({ type: "class-pick", classId: id });
-        }
-      };
-      classPicker.appendChild(btn);
-    });
-  }
-
-  function renderRoster(list) {
-    lastRosterList = list || [];
-    if (!playerRoster) return;
-    playerRoster.innerHTML = "";
-    lastRosterList.forEach(function (p, i) {
-      var li = document.createElement("li");
-      var team = (p.team === 1 || i % 2 === 1) ? "Castle" : "Camp";
-      var clsId = playerClassMap[p.id] || p.classId || "warrior";
-      var cls = (typeof getClass === "function") ? getClass(clsId) : { icon: "" };
-      li.textContent = (cls.icon ? cls.icon + " " : "") + p.name + " — " + team;
+  function playEventFX(events) {
+    if (!events || !events.length) return;
+    for (var i = 0; i < events.length; i++) {
+      var ev = events[i];
       try {
-        if (typeof Network !== "undefined" && p.id === Network.getMyId()) li.classList.add("you");
+        if (ev.kind === "melee" && window.AudioFX) AudioFX.meleeSwing();
+        else if (ev.kind === "ranged") {
+          if (window.AudioFX) AudioFX.shoot();
+          if (window.Particles) Particles.muzzlePuff(ev.x, ev.y);
+        } else if (ev.kind === "hit" || ev.kind === "structure_hit") {
+          if (window.AudioFX) AudioFX.hit();
+          if (window.Particles) Particles.hitSpark(ev.x || 0, ev.y || 0);
+        } else if (ev.kind === "death") {
+          if (window.AudioFX) AudioFX.death();
+          if (window.Particles) Particles.deathBurst(ev.x, ev.y);
+        } else if (ev.kind === "ability" || ev.kind === "heal" || ev.kind === "capture" || ev.kind === "spawn") {
+          if (window.AudioFX) AudioFX.hit();
+          if (window.Particles && ev.x != null) Particles.hitSpark(ev.x, ev.y);
+        }
       } catch (e) {}
-      playerRoster.appendChild(li);
-    });
-    if (lobbyStatus) {
-      lobbyStatus.textContent = lastRosterList.length + " player(s) — host can start";
-    }
-    if (btnStart) {
-      if (isHost) {
-        btnStart.classList.remove("hidden");
-        btnStart.hidden = false;
-        btnStart.disabled = lastRosterList.length < 1;
-      } else {
-        btnStart.classList.add("hidden");
-        btnStart.hidden = true;
-      }
     }
   }
 
-  function onStartGame(payload) {
+  function drawNpc(ctx2, screenX, screenY, npc) {
+    ctx2.save();
+    ctx2.translate(screenX, screenY);
+    var col = npc.color || (npc.team === 0 ? "#3d9e58" : "#5a8ec8");
+    var size = npc.isRam ? 18 : 11;
+    ctx2.fillStyle = "rgba(0,0,0,0.32)";
+    ctx2.beginPath();
+    ctx2.ellipse(0, size * 0.7, size * 0.9, size * 0.35, 0, 0, Math.PI * 2);
+    ctx2.fill();
+    ctx2.save();
+    ctx2.rotate(npc.angle || 0);
+    if (npc.isRam) {
+      ctx2.fillStyle = "#4a3720";
+      ctx2.fillRect(-20, -10, 36, 20);
+      ctx2.fillStyle = "#8a8a8a";
+      ctx2.beginPath();
+      ctx2.moveTo(16, -8); ctx2.lineTo(28, 0); ctx2.lineTo(16, 8); ctx2.closePath();
+      ctx2.fill();
+      ctx2.fillStyle = col;
+      ctx2.fillRect(-6, -16, 12, 6);
+    } else {
+      ctx2.fillStyle = col;
+      ctx2.fillRect(-size * 0.7, -size * 0.7, size * 1.4, size * 1.4);
+      ctx2.fillStyle = "#d4b896";
+      ctx2.beginPath();
+      ctx2.arc(0, -size * 1.1, size * 0.45, 0, Math.PI * 2);
+      ctx2.fill();
+    }
+    ctx2.restore();
+    ctx2.font = "11px monospace";
+    ctx2.textAlign = "center";
+    ctx2.fillStyle = "#e8eef4";
+    ctx2.fillText(npc.name || "NPC", 0, -size - 15);
+    var barW = npc.isRam ? 36 : 24;
+    var pct = (npc.hp || 0) / (npc.maxHp || 40);
+    ctx2.fillStyle = "#0a0c0e";
+    ctx2.fillRect(-barW / 2, -size - 10, barW, 3);
+    ctx2.fillStyle = pct > 0.4 ? "#3dce5c" : "#d13a35";
+    ctx2.fillRect(-barW / 2, -size - 10, barW * Math.max(0, pct), 3);
+    ctx2.restore();
+  }
+
+  function init(payload, hostFlag, localId) {
+    isHost = !!hostFlag;
+    myId = localId;
+    currentWeapon = "sword";
+    shakeMag = 0;
+    prevLocalHp = null;
+    lastError = null;
+
+    if (window.Particles && Particles.clear) {
+      try { Particles.clear(); } catch (e) {}
+    }
+
+    var players = (payload && payload.players) ? payload.players : [];
+    if (!myId && players.length) myId = players[0].id;
+    if (!myId) myId = "local-host";
+
+    if (isHost) {
+      if (typeof HostSim === "undefined") {
+        lastError = "HostSim missing";
+        console.error(lastError);
+        return;
+      }
+      HostSim.init(players);
+      if (typeof Network !== "undefined") {
+        Network.onMessage("input", function (msg, fromPeerId) {
+          HostSim.setInput(fromPeerId, msg);
+        });
+        Network.onMessage("peer-left", function (msg) {
+          if (msg && msg.peerId) HostSim.markDisconnected(msg.peerId);
+        });
+      }
+    } else if (typeof ClientSync !== "undefined") {
+      ClientSync.init(playEventFX);
+    }
+  }
+
+  function start(canvasEl) {
+    canvas = canvasEl;
+    if (!canvas) return;
+    ctx = canvas.getContext("2d");
+    if (window.Camera && Camera.setViewport) Camera.setViewport(canvas.width, canvas.height);
+    vignetteGradient = buildVignette();
+    if (window.Input && Input.init) Input.init(canvas);
+    if (window.TouchControls && TouchControls.init) {
+      try { TouchControls.init(); } catch (e) {}
+    }
+    function selectWeapon(w) {
+      currentWeapon = w;
+      if (window.WeaponBar && WeaponBar.setActive) WeaponBar.setActive(w);
+    }
+    if (window.Input && Input.onWeaponSelect) Input.onWeaponSelect(selectWeapon);
+    if (window.WeaponBar && WeaponBar.init) {
+      try {
+        WeaponBar.init(document.getElementById("weapon-bar"), selectWeapon);
+        WeaponBar.setActive(currentWeapon);
+      } catch (e) {}
+    }
+    if (window.AudioFX && AudioFX.resume) {
+      try { AudioFX.resume(); } catch (e) {}
+    }
+    running = true;
+    lastFrameTime = performance.now();
+    var tickRate = (window.HostSim && HostSim.TICK_RATE) ? HostSim.TICK_RATE : 20;
+    netIntervalId = setInterval(networkTick, 1000 / tickRate);
+    rafId = requestAnimationFrame(renderLoop);
+  }
+
+  function stop() {
+    running = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    if (netIntervalId) clearInterval(netIntervalId);
+  }
+
+  function buildLocalInput() {
+    var move = { dx: 0, dy: 0 };
+    if (window.Input && Input.getMoveVector) move = Input.getMoveVector();
+    return {
+      type: "input",
+      dx: move.dx || 0,
+      dy: move.dy || 0,
+      angle: (window.Input && Input.getAimAngle) ? Input.getAimAngle() : 0,
+      attack: (window.Input && Input.isAttacking) ? Input.isAttacking() : false,
+      weapon: currentWeapon,
+      ability: (window.AbilityInput && AbilityInput.consume()) ? true : false,
+    };
+  }
+
+  function networkTick() {
     try {
-      if (screenLobby) {
-        screenLobby.style.display = "none";
-        screenLobby.classList.add("hidden");
+      var input = buildLocalInput();
+      if (isHost && window.HostSim) {
+        HostSim.setInput(myId, input);
+        HostSim.tick(1 / (HostSim.TICK_RATE || 20));
+        playEventFX(HostSim.getTickEvents());
+        if (typeof Network !== "undefined") Network.send(HostSim.getSnapshotPayload());
+      } else if (typeof Network !== "undefined") {
+        Network.send(input);
       }
-      if (screenGame) {
-        screenGame.classList.remove("hidden");
-        screenGame.hidden = false;
-        screenGame.style.display = "block";
-      }
-
-      var id = null;
-      try { id = Network.getMyId(); } catch (e) {}
-      if (!id && payload && payload.players && payload.players.length) {
-        id = payload.players[0].id;
-      }
-
-      if (typeof Game === "undefined") {
-        alert("Game module missing — check game.js");
-        return;
-      }
-
-      Game.init(payload || { players: [] }, isHost, id);
-      Game.start(canvas);
     } catch (e) {
-      console.error("onStartGame failed:", e);
-      alert("Start failed: " + (e.message || e));
-      if (canvas) {
-        var c = canvas.getContext("2d");
-        if (c) {
-          c.fillStyle = "#1a2b1e";
-          c.fillRect(0, 0, canvas.width, canvas.height);
-          c.fillStyle = "#ff6666";
-          c.font = "16px monospace";
-          c.textAlign = "center";
-          c.fillText("Start error: " + (e.message || e), canvas.width / 2, canvas.height / 2);
-        }
-      }
+      lastError = e.message || String(e);
+      console.error("networkTick", e);
     }
   }
 
-  var sharedCallbacks = {
-    onRosterUpdate: renderRoster,
-    onError: showError,
-    onStartGame: onStartGame,
-  };
+  function renderLoop() {
+    if (!running || !ctx || !canvas) return;
+    var now = performance.now();
+    var dt = Math.min(0.1, (now - lastFrameTime) / 1000);
+    lastFrameTime = now;
 
-  var btnContinue = $("btn-continue");
-  if (btnContinue) {
-    btnContinue.onclick = function () {
-      var name = inputName ? inputName.value.trim() : "";
-      if (!name) { if (inputName) inputName.focus(); return; }
-      playerName = name;
-      showPanel("choice");
-    };
-  }
-  if (inputName) {
-    inputName.onkeydown = function (e) {
-      if (e.key === "Enter" && btnContinue) btnContinue.onclick();
-    };
-  }
-  showPanel("name");
+    try {
+      var players = [];
+      var projectiles = [];
+      var npcs = [];
+      var flags = [];
+      var killfeed = [];
+      var timeLeft = 0;
+      var matchOver = false;
+      var winnerName = null;
+      var localPlayer = null;
+      var serverTime = now / 1000;
 
-  var btnHost = $("btn-host");
-  if (btnHost) {
-    btnHost.onclick = function () {
-      if (!playerName) {
-        var n = inputName ? inputName.value.trim() : "";
-        if (!n) { showPanel("name"); return; }
-        playerName = n;
-      }
-      isHost = true;
-      if (lobbyStatus) lobbyStatus.textContent = "Opening camp…";
-      showPanel("lobby");
-      buildClassPicker();
-      if (typeof Network === "undefined") {
-        showError("Network missing — upload network.js");
-        return;
-      }
-      Network.hostRoom(playerName, Object.assign({}, sharedCallbacks, {
-        onHostReady: function (code) {
-          if (roomCodeDisplay) roomCodeDisplay.textContent = code;
-          try { playerClassMap[Network.getMyId()] = selectedClass; } catch (e) {}
-          showPanel("lobby");
-        },
-      }));
-      if (Network.onMessage) {
-        Network.onMessage("class-pick", function (msg, fromId) {
-          if (msg && msg.classId) {
-            playerClassMap[fromId] = msg.classId;
-            renderRoster(lastRosterList);
-          }
-        });
-      }
-    };
-  }
-
-  var btnJoinOpen = $("btn-join-open");
-  if (btnJoinOpen) {
-    btnJoinOpen.onclick = function () {
-      showPanel("join");
-      if (campList) campList.innerHTML = "<li class='empty'>Enter a 4-letter code</li>";
-      if (typeof Network !== "undefined" && Network.listOpenCamps) {
-        Network.listOpenCamps().then(function (camps) {
-          if (!campList) return;
-          campList.innerHTML = "";
-          if (!camps.length) {
-            campList.innerHTML = "<li class='empty'>No camps — enter code</li>";
-            return;
-          }
-          camps.forEach(function (c) {
-            var li = document.createElement("li");
-            var span = document.createElement("span");
-            span.className = "camp-code";
-            span.textContent = c.code;
-            var b = document.createElement("button");
-            b.className = "join-btn-small";
-            b.textContent = "Join";
-            b.onclick = function () {
-              if (inputCode) inputCode.value = c.code;
-              if ($("btn-join-confirm")) $("btn-join-confirm").onclick();
-            };
-            li.appendChild(span);
-            li.appendChild(b);
-            campList.appendChild(li);
-          });
-        }).catch(function () {
-          if (campList) campList.innerHTML = "<li class='empty'>Use code below</li>";
-        });
-      }
-    };
-  }
-
-  var btnJoinBack = $("btn-join-back");
-  if (btnJoinBack) btnJoinBack.onclick = function () { showPanel("choice"); };
-
-  var btnRefresh = $("btn-refresh-camps");
-  if (btnRefresh) btnRefresh.onclick = function () {
-    if (btnJoinOpen) btnJoinOpen.onclick();
-  };
-
-  var btnJoinConfirm = $("btn-join-confirm");
-  if (btnJoinConfirm) {
-    btnJoinConfirm.onclick = function () {
-      var code = inputCode ? inputCode.value.trim().toUpperCase() : "";
-      if (code.length !== 4) { if (inputCode) inputCode.focus(); return; }
-      if (!playerName) {
-        var n = inputName ? inputName.value.trim() : "";
-        if (!n) { showPanel("name"); return; }
-        playerName = n;
-      }
-      isHost = false;
-      if (lobbyStatus) lobbyStatus.textContent = "Connecting…";
-      showPanel("lobby");
-      buildClassPicker();
-      if (roomCodeDisplay) roomCodeDisplay.textContent = code;
-      if (typeof Network === "undefined") {
-        showError("Network missing");
-        return;
-      }
-      Network.joinRoom(code, playerName, Object.assign({}, sharedCallbacks, {
-        onJoined: function (c) {
-          if (roomCodeDisplay) roomCodeDisplay.textContent = c;
-          Network.send({ type: "class-pick", classId: selectedClass });
-        },
-        onHostLeft: function () {
-          if (lobbyStatus) lobbyStatus.textContent = "Host left.";
-        },
-      }));
-    };
-  }
-  if (inputCode) {
-    inputCode.onkeydown = function (e) {
-      if (e.key === "Enter" && btnJoinConfirm) btnJoinConfirm.onclick();
-    };
-  }
-
-  var btnLobbyBack = $("btn-lobby-back");
-  if (btnLobbyBack) {
-    btnLobbyBack.onclick = function () {
-      try { if (typeof Network !== "undefined") Network.leaveRoom(); } catch (e) {}
-      location.reload();
-    };
-  }
-
-  if (btnStart) {
-    btnStart.onclick = function () {
-      if (!isHost) return;
-      if (lastRosterList.length < 1) {
-        showError("No players yet — wait for camp code to appear");
-        return;
-      }
-      try { playerClassMap[Network.getMyId()] = selectedClass; } catch (e) {}
-      var payload = {
-        players: lastRosterList.map(function (p, i) {
-          return {
-            id: p.id,
-            name: p.name,
-            colorIndex: i,
-            spawnIndex: i,
-            team: (typeof p.team === "number") ? p.team : (i % 2),
-            classId: playerClassMap[p.id] || p.classId || selectedClass || "warrior",
-          };
-        }),
-      };
-      var myId = null;
-      try { myId = Network.getMyId(); } catch (e) {}
-      if (myId) {
-        var found = false;
-        for (var i = 0; i < payload.players.length; i++) {
-          if (payload.players[i].id === myId) found = true;
+      if (isHost && window.HostSim) {
+        var state = HostSim.getState();
+        players = state.players || [];
+        projectiles = state.projectiles || [];
+        npcs = state.npcs || [];
+        flags = state.flags || [];
+        killfeed = state.killfeed || [];
+        timeLeft = state.timeLeft || 0;
+        matchOver = !!state.matchOver;
+        winnerName = state.winnerName;
+        for (var i = 0; i < players.length; i++) {
+          if (players[i].id === myId) { localPlayer = players[i]; break; }
         }
-        if (!found) {
-          payload.players.unshift({
-            id: myId,
-            name: playerName || "Host",
-            colorIndex: 0,
-            spawnIndex: 0,
-            team: 0,
-            classId: selectedClass,
-          });
+        if (!localPlayer && players.length) localPlayer = players[0];
+      } else if (window.ClientSync) {
+        ClientSync.update();
+        players = ClientSync.getPlayers() || [];
+        projectiles = ClientSync.getProjectiles() || [];
+        npcs = ClientSync.getNpcs ? ClientSync.getNpcs() : [];
+        flags = ClientSync.getFlags ? ClientSync.getFlags() : [];
+        killfeed = ClientSync.getKillfeed() || [];
+        timeLeft = ClientSync.getTimeLeft() || 0;
+        matchOver = ClientSync.isMatchOver();
+        winnerName = ClientSync.getWinnerName();
+        for (var j = 0; j < players.length; j++) {
+          if (players[j].id === myId) { localPlayer = players[j]; break; }
+        }
+        if (!localPlayer && players.length) localPlayer = players[0];
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#1a2b1e";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (!localPlayer) {
+        ctx.fillStyle = "#e8dcc0";
+        ctx.font = "20px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("Connecting to camp...", canvas.width / 2, canvas.height / 2 - 10);
+        ctx.font = "14px monospace";
+        ctx.fillStyle = "#aaa";
+        ctx.fillText("myId: " + String(myId) + "  players: " + players.length, canvas.width / 2, canvas.height / 2 + 20);
+        if (lastError) {
+          ctx.fillStyle = "#ff6666";
+          ctx.fillText(lastError, canvas.width / 2, canvas.height / 2 + 44);
+        }
+        rafId = requestAnimationFrame(renderLoop);
+        return;
+      }
+
+      if (prevLocalHp !== null && localPlayer.hp < prevLocalHp) {
+        shakeMag = Math.min(14, shakeMag + (prevLocalHp - localPlayer.hp) * 0.25 + 4);
+      }
+      prevLocalHp = localPlayer.hp;
+      shakeMag *= 0.9;
+      var shakeX = shakeMag > 0.3 ? (Math.random() - 0.5) * shakeMag : 0;
+      var shakeY = shakeMag > 0.3 ? (Math.random() - 0.5) * shakeMag : 0;
+
+      if (window.Camera && Camera.follow) Camera.follow(localPlayer.x, localPlayer.y);
+      if (window.Particles && Particles.update) {
+        try { Particles.update(dt); } catch (e) {}
+      }
+      if (window.WeaponBar && WeaponBar.setActive) WeaponBar.setActive(localPlayer.weapon || currentWeapon);
+
+      ctx.save();
+      ctx.translate(shakeX, shakeY);
+
+      if (window.GameMap && GameMap.draw && window.Camera) {
+        try {
+          GameMap.draw(ctx, Camera.x, Camera.y, Camera.viewW || canvas.width, Camera.viewH || canvas.height, { flags: flags });
+        } catch (e) {
+          lastError = "Map: " + (e.message || e);
         }
       }
-      Network.startGame(payload);
-    };
+
+      if (typeof drawPlayer === "function" && window.Camera) {
+        var drawOrder = players.slice().sort(function (a, b) { return a.y - b.y; });
+        for (var pi = 0; pi < drawOrder.length; pi++) {
+          var p = drawOrder[pi];
+          var s = Camera.worldToScreen(p.x, p.y);
+          try { drawPlayer(ctx, s.x, s.y, p); } catch (e) {}
+        }
+      }
+
+      if (window.Camera) {
+        for (var ni = 0; ni < npcs.length; ni++) {
+          var n = npcs[ni];
+          if (!n.alive) continue;
+          var ns = Camera.worldToScreen(n.x, n.y);
+          try { drawNpc(ctx, ns.x, ns.y, n); } catch (e) {}
+        }
+      }
+
+      if (typeof drawProjectile === "function" && window.Camera) {
+        for (var qi = 0; qi < projectiles.length; qi++) {
+          var proj = projectiles[qi];
+          var ps = Camera.worldToScreen(proj.x, proj.y);
+          try { drawProjectile(ctx, ps.x, ps.y, proj); } catch (e) {}
+        }
+      }
+
+      if (window.Particles && Particles.draw && window.Camera) {
+        try {
+          Particles.draw(ctx, function (wx, wy) { return Camera.worldToScreen(wx, wy); });
+        } catch (e) {}
+      }
+
+      ctx.restore();
+
+      if (vignetteGradient) {
+        ctx.fillStyle = vignetteGradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      if (window.HUD && HUD.draw) {
+        try {
+          HUD.draw(ctx, {
+            localPlayer: localPlayer,
+            allPlayers: players,
+            flags: flags,
+            killfeed: killfeed,
+            timeLeft: timeLeft,
+            matchOver: matchOver,
+            winnerName: winnerName,
+            viewW: canvas.width,
+            viewH: canvas.height,
+            serverTime: serverTime,
+          });
+        } catch (e) {
+          lastError = "HUD: " + (e.message || e);
+        }
+      } else {
+        ctx.fillStyle = "#e8eef4";
+        ctx.font = "16px monospace";
+        ctx.textAlign = "left";
+        ctx.fillText("HP " + Math.round(localPlayer.hp || 0), 16, 28);
+        ctx.fillText((localPlayer.name || "?") + " team " + localPlayer.team, 16, 48);
+      }
+    } catch (e) {
+      lastError = e.message || String(e);
+      console.error("renderLoop", e);
+      ctx.fillStyle = "#1a2b1e";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#ff6666";
+      ctx.font = "16px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("Error: " + lastError, canvas.width / 2, canvas.height / 2);
+    }
+
+    rafId = requestAnimationFrame(renderLoop);
   }
+
+  return { init: init, start: start, stop: stop };
 })();
