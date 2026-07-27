@@ -1,16 +1,15 @@
 /**
- * host-sim.js — Conquest: zones, NPCs (max 3), 3rd = battering ram.
- * NPCs use GameMap.tryMove so they don't stick on crates.
- * No template literals (paste-safe).
+ * host-sim.js — Conquest + class abilities (Warrior/Ranger/Mage/Monk).
+ * Paste-safe.
  */
 const HostSim = (() => {
-  const TICK_RATE = 20;
-  const MATCH_DURATION = 480;
-  const CAPTURE_TIME = 3.2;
-  const NPC_PER_ZONE = 3;
-  const SPAWN_INTERVAL = 5.5;
-  const HQ_MAX_HP = 280;
-  const RAM_STRUCTURE_DAMAGE = 22;
+  var TICK_RATE = 20;
+  var MATCH_DURATION = 480;
+  var CAPTURE_TIME = 3.0;
+  var NPC_PER_ZONE = 3;
+  var SPAWN_INTERVAL = 5.0;
+  var HQ_MAX_HP = 280;
+  var RAM_STRUCTURE_DAMAGE = 22;
 
   var players = new Map();
   var projectiles = [];
@@ -64,14 +63,23 @@ const HostSim = (() => {
     spawnAssignment = new Map();
     playerConfigs.forEach(function (cfg, i) {
       var team = cfg.team != null ? cfg.team : (i % 2);
+      var classId = cfg.classId || "warrior";
+      var cls = (typeof getClass === "function") ? getClass(classId) : { maxHp: 100, speedMul: 1, weapon: "sword", ability: { cooldown: 8 } };
       var spawnPool = GameMap.SPAWNS.filter(function (s) { return s.team === team; });
       var spawn = spawnPool[i % spawnPool.length] || GameMap.SPAWNS[0];
       var p = createPlayer(cfg.id, cfg.name, cfg.colorIndex != null ? cfg.colorIndex : i, 0);
       p.x = spawn.x;
       p.y = spawn.y;
       p.team = team;
+      p.classId = classId;
+      p.maxHp = cls.maxHp || MAX_HP;
+      p.hp = p.maxHp;
+      p.speedMul = cls.speedMul || 1;
+      p.weapon = cls.weapon || p.weapon;
+      p.abilityCdUntil = 0;
+      p.stunUntil = 0;
       players.set(cfg.id, p);
-      spawnAssignment.set(cfg.id, { team: team, x: spawn.x, y: spawn.y });
+      spawnAssignment.set(cfg.id, { team: team, x: spawn.x, y: spawn.y, classId: classId });
     });
     projectiles = [];
     npcs = [];
@@ -82,14 +90,8 @@ const HostSim = (() => {
     winnerName = null;
     flags = GameMap.FLAGS.map(function (f) {
       return {
-        id: f.id,
-        name: f.name,
-        x: f.x,
-        y: f.y,
-        radius: f.radius,
-        team: f.team,
-        progress: 0,
-        capturingTeam: -1,
+        id: f.id, name: f.name, x: f.x, y: f.y, radius: f.radius, team: f.team,
+        progress: 0, capturingTeam: -1,
         structureHp: (f.id === "camp_hq" || f.id === "castle_hq") ? HQ_MAX_HP : null,
         structureMax: (f.id === "camp_hq" || f.id === "castle_hq") ? HQ_MAX_HP : null,
       };
@@ -117,11 +119,89 @@ const HostSim = (() => {
     });
   }
 
+  function damageUnit(unit, dmg, now) {
+    if (!unit || !unit.alive) return false;
+    unit.hp = Math.max(0, unit.hp - dmg);
+    unit.lastHitFlashAt = now;
+    tickEvents.push({ kind: "hit", x: unit.x, y: unit.y });
+    if (unit.hp <= 0) {
+      unit.alive = false;
+      if (unit.respawnAt !== undefined) unit.respawnAt = now + (typeof RESPAWN_SECONDS !== "undefined" ? RESPAWN_SECONDS : 4);
+      tickEvents.push({ kind: "death", x: unit.x, y: unit.y });
+      return true;
+    }
+    return false;
+  }
+
+  function useAbility(player, now) {
+    var cls = (typeof getClass === "function") ? getClass(player.classId) : null;
+    if (!cls || !cls.ability) return;
+    if (now < (player.abilityCdUntil || 0)) return;
+    var ab = cls.ability;
+    player.abilityCdUntil = now + ab.cooldown;
+    tickEvents.push({ kind: "ability", classId: player.classId, abilityId: ab.id, x: player.x, y: player.y, angle: player.angle });
+
+    if (ab.id === "bash") {
+      var targets = Array.from(players.values()).concat(npcs);
+      for (var i = 0; i < targets.length; i++) {
+        var t = targets[i];
+        if (!t.alive || t.team === player.team || t.id === player.id) continue;
+        var d = Math.hypot(t.x - player.x, t.y - player.y);
+        if (d > ab.range) continue;
+        var ang = Math.atan2(t.y - player.y, t.x - player.x);
+        var diff = Math.abs(Math.atan2(Math.sin(ang - player.angle), Math.cos(ang - player.angle)));
+        if (diff > 1.1) continue;
+        damageUnit(t, ab.damage, now);
+        t.stunUntil = now + ab.stun;
+      }
+    } else if (ab.id === "volley") {
+      var shots = ab.shots || 5;
+      var spread = ab.spread || 0.35;
+      for (var s = 0; s < shots; s++) {
+        var a = player.angle - spread / 2 + (spread * s) / Math.max(1, shots - 1);
+        var proj = createProjectile(player, "bow");
+        proj.angle = a;
+        proj.vx = Math.cos(a) * (proj.speed || 420);
+        proj.vy = Math.sin(a) * (proj.speed || 420);
+        projectiles.push(proj);
+      }
+    } else if (ab.id === "nova") {
+      var targets2 = Array.from(players.values()).concat(npcs);
+      for (var j = 0; j < targets2.length; j++) {
+        var u = targets2[j];
+        if (!u.alive || u.team === player.team || u.id === player.id) continue;
+        if (Math.hypot(u.x - player.x, u.y - player.y) <= ab.radius) {
+          damageUnit(u, ab.damage, now);
+        }
+      }
+      flags.forEach(function (f) {
+        if (f.structureHp == null) return;
+        if ((player.team === 0 && f.id !== "castle_hq") || (player.team === 1 && f.id !== "camp_hq")) return;
+        if (Math.hypot(f.x - player.x, f.y - player.y) <= ab.radius) {
+          f.structureHp = Math.max(0, f.structureHp - Math.floor(ab.damage * 0.4));
+          tickEvents.push({ kind: "structure_hit", flagId: f.id, hp: f.structureHp });
+          if (f.structureHp <= 0) {
+            matchOver = true;
+            winnerName = player.team === 0 ? "Camp" : "Castle";
+          }
+        }
+      });
+    } else if (ab.id === "restore") {
+      player.hp = Math.min(player.maxHp || MAX_HP, player.hp + (ab.heal || 40));
+      var dash = ab.dash || 80;
+      var nx = player.x + Math.cos(player.angle) * dash;
+      var ny = player.y + Math.sin(player.angle) * dash;
+      var resolved = moveEntity(player.x, player.y, nx - player.x, ny - player.y, typeof PLAYER_RADIUS !== "undefined" ? PLAYER_RADIUS : 14);
+      player.x = resolved.x;
+      player.y = resolved.y;
+      tickEvents.push({ kind: "heal", x: player.x, y: player.y });
+    }
+  }
+
   function updateFlags(dt) {
     for (var i = 0; i < flags.length; i++) {
       var f = flags[i];
       if (f.id === "camp_hq" || f.id === "castle_hq") continue;
-
       var present = { 0: 0, 1: 0 };
       players.forEach(function (p) {
         if (!p.alive) return;
@@ -143,10 +223,7 @@ const HostSim = (() => {
             f.progress = 0;
             f.capturingTeam = -1;
             npcs.forEach(function (n) {
-              if (n.zoneId === f.id && n.team === oldTeam) {
-                n.alive = false;
-                n.hp = 0;
-              }
+              if (n.zoneId === f.id && n.team === oldTeam) { n.alive = false; n.hp = 0; }
             });
             zoneSpawnTimer[f.id] = 0;
             tickEvents.push({ kind: "capture", flagId: f.id, team: capturer, x: f.x, y: f.y });
@@ -173,17 +250,11 @@ const HostSim = (() => {
       npcs.forEach(consider);
       if (best) {
         towerCooldown[tw.id] = now + tw.cooldown;
-        best.hp = Math.max(0, best.hp - tw.damage);
-        best.lastHitFlashAt = now;
-        tickEvents.push({ kind: "hit", x: best.x, y: best.y });
+        damageUnit(best, tw.damage, now);
         tickEvents.push({ kind: "tower_shot", x: tw.x, y: tw.y, tx: best.x, ty: best.y });
-        if (best.hp <= 0) {
-          best.alive = false;
-          if (best.respawnAt !== undefined) best.respawnAt = now + RESPAWN_SECONDS;
-          if (best.name) {
-            killfeed.unshift({ killerName: "Tower", targetName: best.name, weaponId: "bow", at: now });
-            killfeed = killfeed.slice(0, 5);
-          }
+        if (!best.alive && best.name) {
+          killfeed.unshift({ killerName: "Tower", targetName: best.name, weaponId: "bow", at: now });
+          killfeed = killfeed.slice(0, 5);
         }
       }
     });
@@ -202,40 +273,24 @@ const HostSim = (() => {
       if (f.team !== 0 && f.team !== 1) return;
       var flavor = ZONE_FLAVOR[f.id];
       if (!flavor) return;
-
       zoneSpawnTimer[f.id] = (zoneSpawnTimer[f.id] || 0) + dt;
       var owned = countZoneNpcs(f.id, f.team);
       if (owned >= NPC_PER_ZONE) return;
       if (zoneSpawnTimer[f.id] < SPAWN_INTERVAL) return;
       zoneSpawnTimer[f.id] = 0;
-
       var tier = owned;
       var def = flavor.units[tier] || flavor.units[0];
       var angle = f.team === 0 ? 0 : Math.PI;
-      var ox = (Math.random() - 0.5) * 40;
-      var oy = (Math.random() - 0.5) * 40;
-
       npcs.push({
         id: "npc-" + (npcIdCounter++),
-        name: def.name,
-        team: f.team,
-        zoneId: f.id,
-        tier: tier,
+        name: def.name, team: f.team, zoneId: f.id, tier: tier,
         isRam: !!def.isRam,
-        x: f.x + ox,
-        y: f.y + oy,
-        angle: angle,
-        hp: def.hp,
-        maxHp: def.hp,
-        alive: true,
-        speed: def.speed,
-        damage: def.damage,
-        range: def.range,
-        attackCooldown: def.isRam ? 1.25 : 0.8,
-        lastAttackAt: 0,
-        color: def.color,
-        colorIndex: f.team === 0 ? 0 : 1,
-        stuckTimer: 0,
+        x: f.x + (Math.random() - 0.5) * 40,
+        y: f.y + (Math.random() - 0.5) * 40,
+        angle: angle, hp: def.hp, maxHp: def.hp, alive: true,
+        speed: def.speed, damage: def.damage, range: def.range,
+        attackCooldown: def.isRam ? 1.25 : 0.8, lastAttackAt: 0,
+        color: def.color, colorIndex: f.team === 0 ? 0 : 1, stuckTimer: 0,
       });
       tickEvents.push({ kind: "spawn", x: f.x, y: f.y, team: f.team, isRam: !!def.isRam });
     });
@@ -245,6 +300,7 @@ const HostSim = (() => {
     for (var i = 0; i < npcs.length; i++) {
       var n = npcs[i];
       if (!n.alive) continue;
+      if (n.stunUntil && now < n.stunUntil) continue;
 
       var target = null;
       var bestD = n.isRam ? 1000 : 480;
@@ -257,10 +313,7 @@ const HostSim = (() => {
           if (n.team === 1 && ff.id === "camp_hq") enemyHq = ff;
         }
         if (enemyHq) {
-          target = {
-            x: enemyHq.x, y: enemyHq.y, alive: true, team: 1 - n.team,
-            isStructure: true, flag: enemyHq, hp: enemyHq.structureHp,
-          };
+          target = { x: enemyHq.x, y: enemyHq.y, alive: true, team: 1 - n.team, isStructure: true, flag: enemyHq, hp: enemyHq.structureHp };
           bestD = Math.hypot(enemyHq.x - n.x, enemyHq.y - n.y);
         }
       }
@@ -291,7 +344,6 @@ const HostSim = (() => {
           bestD = Math.hypot(hq.x - n.x, hq.y - n.y);
         }
       }
-
       if (!target) continue;
 
       n.angle = Math.atan2(target.y - n.y, target.x - n.x);
@@ -303,14 +355,12 @@ const HostSim = (() => {
         var prevX = n.x, prevY = n.y;
         var resolved = moveEntity(n.x, n.y, stepX, stepY, rad);
         var moved = Math.hypot(resolved.x - prevX, resolved.y - prevY);
-
         if (moved < 0.5) {
           n.stuckTimer = (n.stuckTimer || 0) + dt;
           var side = (i % 2 === 0) ? 1 : -1;
           var alt = moveEntity(n.x, n.y, -stepY * side * 1.2, stepX * side * 1.2, rad);
-          if (Math.hypot(alt.x - prevX, alt.y - prevY) > moved) {
-            resolved = alt;
-          } else {
+          if (Math.hypot(alt.x - prevX, alt.y - prevY) > moved) resolved = alt;
+          else {
             alt = moveEntity(n.x, n.y, -stepY * -side * 1.2, stepX * -side * 1.2, rad);
             if (Math.hypot(alt.x - prevX, alt.y - prevY) > moved) resolved = alt;
           }
@@ -320,14 +370,11 @@ const HostSim = (() => {
             resolved = GameMap.resolveCircleCollision(n.x, n.y, rad);
             n.stuckTimer = 0;
           }
-        } else {
-          n.stuckTimer = 0;
-        }
+        } else n.stuckTimer = 0;
         n.x = resolved.x;
         n.y = resolved.y;
       } else if (now - n.lastAttackAt >= n.attackCooldown) {
         n.lastAttackAt = now;
-
         if (target.isStructure && target.flag) {
           var dmg = n.isRam ? RAM_STRUCTURE_DAMAGE : Math.floor(n.damage * 0.5);
           target.flag.structureHp = Math.max(0, (target.flag.structureHp || 0) - dmg);
@@ -337,23 +384,11 @@ const HostSim = (() => {
             matchOver = true;
             winnerName = n.team === 0 ? "Camp" : "Castle";
             tickEvents.push({ kind: "death", x: target.x, y: target.y });
-            killfeed.unshift({
-              killerName: n.name,
-              targetName: target.flag.name,
-              weaponId: "axe",
-              at: now,
-            });
+            killfeed.unshift({ killerName: n.name, targetName: target.flag.name, weaponId: "axe", at: now });
             killfeed = killfeed.slice(0, 5);
           }
         } else if (target.hp != null) {
-          target.hp = Math.max(0, target.hp - n.damage);
-          target.lastHitFlashAt = now;
-          tickEvents.push({ kind: "hit", x: target.x, y: target.y });
-          if (target.hp <= 0) {
-            target.alive = false;
-            if (target.respawnAt !== undefined) target.respawnAt = now + RESPAWN_SECONDS;
-            tickEvents.push({ kind: "death", x: target.x, y: target.y });
-          }
+          damageUnit(target, n.damage, now);
         }
       }
     }
@@ -364,25 +399,26 @@ const HostSim = (() => {
     tickEvents = [];
     if (matchOver) return;
     var now = performance.now() / 1000;
+    var speed = typeof PLAYER_SPEED !== "undefined" ? PLAYER_SPEED : 210;
+    var radius = typeof PLAYER_RADIUS !== "undefined" ? PLAYER_RADIUS : 14;
 
     players.forEach(function (player) {
       var input = inputs.get(player.id);
       if (!input || !player.alive) return;
+      if (player.stunUntil && now < player.stunUntil) return;
 
-      var resolved = moveEntity(
-        player.x, player.y,
-        input.dx * PLAYER_SPEED * dt,
-        input.dy * PLAYER_SPEED * dt,
-        PLAYER_RADIUS
-      );
+      var mul = player.speedMul || 1;
+      var resolved = moveEntity(player.x, player.y, input.dx * speed * mul * dt, input.dy * speed * mul * dt, radius);
       player.x = resolved.x;
       player.y = resolved.y;
       player.angle = input.angle;
       if (input.weapon && WEAPONS[input.weapon]) player.weapon = input.weapon;
 
+      if (input.ability) useAbility(player, now);
+
       if (input.attack) {
         var weapon = WEAPONS[player.weapon];
-        if (now - player.lastAttackAt >= weapon.cooldown) {
+        if (weapon && now - player.lastAttackAt >= weapon.cooldown) {
           player.lastAttackAt = now;
           player.lastAttackAnimAt = now;
           var allTargets = Array.from(players.values()).concat(npcs);
@@ -401,8 +437,13 @@ const HostSim = (() => {
     var projResult = Combat.updateProjectiles(projectiles, allTargets, dt);
     projectiles = projResult.survivors;
     registerEvents(projResult.events);
-
     Combat.processRespawns(Array.from(players.values()), spawnAssignment);
+
+    players.forEach(function (p) {
+      if (p.alive && p.maxHp && p.hp >= (typeof MAX_HP !== "undefined" ? MAX_HP : 100) - 0.5) {
+        if (p.maxHp !== (typeof MAX_HP !== "undefined" ? MAX_HP : 100)) p.hp = p.maxHp;
+      }
+    });
 
     updateFlags(dt);
     updateTowers(now);
@@ -458,13 +499,16 @@ const HostSim = (() => {
 
   function getSnapshotPayload() {
     var s = getState();
+    var now = performance.now() / 1000;
     return {
       type: "snapshot",
       players: s.players.map(function (p) {
         return {
           id: p.id, name: p.name, colorIndex: p.colorIndex, team: p.team,
-          x: p.x, y: p.y, angle: p.angle, hp: p.hp, weapon: p.weapon,
-          alive: p.alive, score: p.score,
+          classId: p.classId || "warrior",
+          x: p.x, y: p.y, angle: p.angle, hp: p.hp, maxHp: p.maxHp || MAX_HP,
+          weapon: p.weapon, alive: p.alive, score: p.score,
+          abilityCdUntil: p.abilityCdUntil || 0,
           lastHitFlashAt: p.lastHitFlashAt, lastAttackAnimAt: p.lastAttackAnimAt,
         };
       }),
@@ -479,30 +523,4 @@ const HostSim = (() => {
         };
       }),
       flags: s.flags.map(function (f) {
-        return {
-          id: f.id, name: f.name, x: f.x, y: f.y, radius: f.radius,
-          team: f.team, progress: f.progress,
-          structureHp: f.structureHp, structureMax: f.structureMax,
-        };
-      }),
-      killfeed: s.killfeed,
-      matchOver: s.matchOver,
-      winnerName: s.winnerName,
-      timeLeft: s.timeLeft,
-      events: tickEvents,
-    };
-  }
-
-  function getTickEvents() { return tickEvents; }
-
-  return {
-    init: init,
-    setInput: setInput,
-    tick: tick,
-    getState: getState,
-    getSnapshotPayload: getSnapshotPayload,
-    getTickEvents: getTickEvents,
-    markDisconnected: markDisconnected,
-    TICK_RATE: TICK_RATE,
-  };
-})();
+       
