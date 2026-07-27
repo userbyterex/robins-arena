@@ -1,52 +1,54 @@
 /**
- * main.js — Lobby navigation (English): Create Camp / Join Camp + room browser.
+ * main.js — Lobby: Create Camp / Join Camp + team assignment.
+ * No template literals (paste-safe).
  */
-(() => {
-  const panels = {
+(function () {
+  var panels = {
     name: document.getElementById("panel-name"),
     choice: document.getElementById("panel-choice"),
     join: document.getElementById("panel-join"),
     lobby: document.getElementById("panel-lobby"),
   };
-  const screenLobby = document.getElementById("screen-lobby");
-  const screenGame = document.getElementById("screen-game");
-  const canvas = document.getElementById("game-canvas");
+  var screenLobby = document.getElementById("screen-lobby");
+  var screenGame = document.getElementById("screen-game");
+  var canvas = document.getElementById("game-canvas");
 
-  const inputName = document.getElementById("input-name");
-  const inputCode = document.getElementById("input-code");
-  const roomCodeDisplay = document.getElementById("room-code-display");
-  const lobbyStatus = document.getElementById("lobby-status");
-  const playerRoster = document.getElementById("player-roster");
-  const btnStart = document.getElementById("btn-start-game");
-  const campList = document.getElementById("camp-list");
+  var inputName = document.getElementById("input-name");
+  var inputCode = document.getElementById("input-code");
+  var roomCodeDisplay = document.getElementById("room-code-display");
+  var lobbyStatus = document.getElementById("lobby-status");
+  var playerRoster = document.getElementById("player-roster");
+  var btnStart = document.getElementById("btn-start-game");
+  var campList = document.getElementById("camp-list");
 
-  let playerName = "";
-  let isHost = false;
-  let currentRoomCode = "";
-  let lastRosterList = [];
+  var playerName = "";
+  var isHost = false;
+  var currentRoomCode = "";
+  var lastRosterList = [];
 
   function showPanel(name) {
-    Object.entries(panels).forEach(([key, el]) =>
-      el.setAttribute("data-active", key === name ? "true" : "false")
-    );
+    Object.keys(panels).forEach(function (key) {
+      panels[key].setAttribute("data-active", key === name ? "true" : "false");
+    });
   }
 
   function showError(err) {
-    const msg = err && err.message ? err.message : (typeof err === "string" ? err : "try again.");
+    var msg = err && err.message ? err.message : (typeof err === "string" ? err : "try again.");
     lobbyStatus.textContent = "Error: " + msg;
   }
 
   function renderRoster(list) {
     lastRosterList = list;
     playerRoster.innerHTML = "";
-    list.forEach((p) => {
-      const li = document.createElement("li");
-      li.textContent = p.name;
+    list.forEach(function (p, i) {
+      var li = document.createElement("li");
+      var team = i % 2 === 0 ? "Camp" : "Castle";
+      li.textContent = p.name + " — " + team;
       if (p.id === Network.getMyId()) li.classList.add("you");
       playerRoster.appendChild(li);
     });
     lobbyStatus.textContent = list.length >= 2
-      ? `${list.length} players in camp`
+      ? list.length + " players in camp"
       : "Waiting for players… (min 2)";
 
     if (isHost) {
@@ -64,33 +66,40 @@
     Game.start(canvas);
   }
 
-  const sharedCallbacks = {
+  var sharedCallbacks = {
     onRosterUpdate: renderRoster,
     onError: showError,
-    onStartGame,
+    onStartGame: onStartGame,
   };
 
   async function refreshCampList() {
     campList.innerHTML = "";
-    const empty = document.createElement("li");
+    var empty = document.createElement("li");
     empty.className = "camp-list-empty";
     empty.textContent = "Scanning for camps…";
     campList.appendChild(empty);
 
     try {
-      const camps = await Network.listOpenCamps();
+      var camps = await Network.listOpenCamps();
       campList.innerHTML = "";
       if (!camps.length) {
-        const li = document.createElement("li");
+        var li = document.createElement("li");
         li.className = "camp-list-empty";
         li.textContent = "No open camps found — enter a code below";
         campList.appendChild(li);
         return;
       }
-      camps.forEach((c) => {
-        const li = document.createElement("li");
-        li.innerHTML = `<span class="camp-code">${c.code}</span><span class="camp-meta">Join →</span>`;
-        li.addEventListener("click", () => {
+      camps.forEach(function (c) {
+        var li = document.createElement("li");
+        var codeSpan = document.createElement("span");
+        codeSpan.className = "camp-code";
+        codeSpan.textContent = c.code;
+        var meta = document.createElement("span");
+        meta.className = "camp-meta";
+        meta.textContent = "Join →";
+        li.appendChild(codeSpan);
+        li.appendChild(meta);
+        li.addEventListener("click", function () {
           inputCode.value = c.code;
           document.getElementById("btn-join-confirm").click();
         });
@@ -98,86 +107,80 @@
       });
     } catch (e) {
       campList.innerHTML = "";
-      const li = document.createElement("li");
-      li.className = "camp-list-empty";
-      li.textContent = "Could not list camps — use a code";
-      campList.appendChild(li);
+      var li2 = document.createElement("li");
+      li2.className = "camp-list-empty";
+      li2.textContent = "Could not list camps — use a code";
+      campList.appendChild(li2);
     }
   }
 
-  // --- Name ---
-  document.getElementById("btn-continue").addEventListener("click", () => {
-    const name = inputName.value.trim();
-    if (!name) {
-      inputName.focus();
-      return;
-    }
+  document.getElementById("btn-continue").addEventListener("click", function () {
+    var name = inputName.value.trim();
+    if (!name) { inputName.focus(); return; }
     playerName = name;
     showPanel("choice");
   });
-  inputName.addEventListener("keydown", (e) => {
+  inputName.addEventListener("keydown", function (e) {
     if (e.key === "Enter") document.getElementById("btn-continue").click();
   });
 
-  // --- Create / Join choice ---
-  document.getElementById("btn-host").addEventListener("click", () => {
+  document.getElementById("btn-host").addEventListener("click", function () {
     isHost = true;
     lobbyStatus.textContent = "Opening camp…";
-    Network.hostRoom(playerName, {
-      ...sharedCallbacks,
-      onHostReady: (code) => {
+    Network.hostRoom(playerName, Object.assign({}, sharedCallbacks, {
+      onHostReady: function (code) {
         currentRoomCode = code;
         roomCodeDisplay.textContent = code;
         showPanel("lobby");
       },
-    });
+    }));
   });
 
-  document.getElementById("btn-join-open").addEventListener("click", () => {
+  document.getElementById("btn-join-open").addEventListener("click", function () {
     showPanel("join");
     refreshCampList();
   });
-  document.getElementById("btn-join-back").addEventListener("click", () => showPanel("choice"));
-  document.getElementById("btn-refresh-camps").addEventListener("click", () => refreshCampList());
+  document.getElementById("btn-join-back").addEventListener("click", function () { showPanel("choice"); });
+  document.getElementById("btn-refresh-camps").addEventListener("click", function () { refreshCampList(); });
 
-  // --- Join with code ---
-  document.getElementById("btn-join-confirm").addEventListener("click", () => {
-    const code = inputCode.value.trim().toUpperCase();
-    if (code.length !== 4) {
-      inputCode.focus();
-      return;
-    }
+  document.getElementById("btn-join-confirm").addEventListener("click", function () {
+    var code = inputCode.value.trim().toUpperCase();
+    if (code.length !== 4) { inputCode.focus(); return; }
     isHost = false;
     lobbyStatus.textContent = "Connecting to camp…";
     showPanel("lobby");
     roomCodeDisplay.textContent = code;
-    Network.joinRoom(code, playerName, {
-      ...sharedCallbacks,
-      onJoined: (joinedCode) => {
+    Network.joinRoom(code, playerName, Object.assign({}, sharedCallbacks, {
+      onJoined: function (joinedCode) {
         currentRoomCode = joinedCode;
         roomCodeDisplay.textContent = joinedCode;
       },
-      onHostLeft: () => {
+      onHostLeft: function () {
         lobbyStatus.textContent = "The host left the camp.";
       },
-    });
+    }));
   });
-  inputCode.addEventListener("keydown", (e) => {
+  inputCode.addEventListener("keydown", function (e) {
     if (e.key === "Enter") document.getElementById("btn-join-confirm").click();
   });
 
-  // --- Lobby ---
-  document.getElementById("btn-lobby-back").addEventListener("click", () => {
+  document.getElementById("btn-lobby-back").addEventListener("click", function () {
     Network.leaveRoom();
     location.reload();
   });
 
-  btnStart.addEventListener("click", () => {
+  btnStart.addEventListener("click", function () {
     if (!isHost || lastRosterList.length < 2) return;
-    const payload = {
-      players: lastRosterList.map((p, i) => ({
-        id: p.id, name: p.name, colorIndex: i, spawnIndex: i,
-      })),
+    var payload = {
+      players: lastRosterList.map(function (p, i) {
+        return {
+          id: p.id,
+          name: p.name,
+          colorIndex: i,
+          spawnIndex: i,
+          team: i % 2,
+        };
+      }),
     };
     Network.startGame(payload);
   });
