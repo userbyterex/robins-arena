@@ -2,7 +2,7 @@
  * game.js — Defensive conquest render + localPlayer fallback.
  * Classic script, no import/export.
  */
-const Game = (() => {
+var Game = (function () {
   var canvas, ctx;
   var isHost = false;
   var myId = null;
@@ -255,7 +255,7 @@ const Game = (() => {
         ctx.fillText("Connecting to camp...", canvas.width / 2, canvas.height / 2 - 10);
         ctx.font = "14px monospace";
         ctx.fillStyle = "#aaa";
-        ctx.fillText("myId: " + String(myId) + "  players: " + players.length, canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText("myId: " + String(myId) + " players: " + players.length, canvas.width / 2, canvas.height / 2 + 20);
         if (lastError) {
           ctx.fillStyle = "#ff6666";
           ctx.fillText(lastError, canvas.width / 2, canvas.height / 2 + 44);
