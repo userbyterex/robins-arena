@@ -1,391 +1,132 @@
 /**
- * game.js — Defensive conquest render. ULTRA-SAFE.
+ * game.js — Main game loop with pixel-art rendering.
  */
 var Game = (function () {
-  var canvas, ctx;
-  var isHost = false;
-  var myId = null;
-  var rafId = null;
-  var netIntervalId = null;
-  var lastFrameTime = 0;
-  var currentWeapon = "sword";
-  var running = false;
-  var vignetteGradient = null;
-  var shakeMag = 0;
-  var prevLocalHp = null;
-  var lastError = null;
-  var frameCount = 0;
+  var canvas, ctx, running = false, isHost = false, isSolo = false;
+  var lastTime = 0, accumulator = 0, tickRate = 20, tickDt = 1 / tickRate;
+  var localPlayerId = null;
+  var state = { players: [], projectiles: [], npcs: [], flags: [], killfeed: [], matchOver: false, winnerName: null, timeLeft: 0 };
+  var localInput = { dx: 0, dy: 0, angle: 0, attack: false, weapon: "sword", ultimate: false };
+  var camera = { x: 0, y: 0 };
+  var particles = [];
+  var _lastSnapshotAt = 0;
 
-  function buildVignette() {
-    if (!ctx || !canvas) return null;
-    var g = ctx.createRadialGradient(
-      canvas.width / 2, canvas.height / 2, canvas.height * 0.35,
-      canvas.width / 2, canvas.height / 2, canvas.height * 0.75
-    );
-    g.addColorStop(0, "rgba(0,0,0,0)");
-    g.addColorStop(1, "rgba(0,0,0,0.45)");
-    return g;
+  function init(opts) {
+    canvas = opts.canvas; ctx = canvas.getContext("2d");
+    localPlayerId = opts.localPlayerId;
+    isHost = !!opts.isHost;
+    isSolo = !!opts.isSolo;
+    running = true; lastTime = performance.now() / 1000; accumulator = 0;
+    if (isHost || isSolo) { HostSim.init(opts.playerConfigs || []); }
+    window.addEventListener("resize", onResize); onResize();
+    requestAnimationFrame(loop);
   }
 
-  function playEventFX(events) {
-    if (!events || !events.length) return;
+  function onResize() {
+    if (!canvas) return;
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    ctx.imageSmoothingEnabled = false;
+  }
+
+  function stop() { running = false; }
+
+  function applySnapshot(payload) {
+    if (!payload) return;
+    state.players = payload.players || [];
+    state.projectiles = payload.projectiles || [];
+    state.npcs = payload.npcs || [];
+    state.flags = payload.flags || [];
+    state.killfeed = payload.killfeed || [];
+    state.matchOver = !!payload.matchOver;
+    state.winnerName = payload.winnerName || null;
+    state.timeLeft = payload.timeLeft || 0;
+    if (payload.events) processEvents(payload.events);
+    if (payload.serverTime) _lastSnapshotAt = payload.serverTime;
+  }
+
+  function processEvents(events) {
     for (var i = 0; i < events.length; i++) {
       var ev = events[i];
-      try {
-        if (ev.kind === "melee" && window.AudioFX) AudioFX.meleeSwing();
-        else if (ev.kind === "ranged") {
-          if (window.AudioFX) AudioFX.shoot();
-          if (window.Particles) Particles.muzzlePuff(ev.x, ev.y);
-        } else if (ev.kind === "hit" || ev.kind === "structure_hit") {
-          if (window.AudioFX) AudioFX.hit();
-          if (window.Particles) Particles.hitSpark(ev.x || 0, ev.y || 0);
-        } else if (ev.kind === "death") {
-          if (window.AudioFX) AudioFX.death();
-          if (window.Particles) Particles.deathBurst(ev.x, ev.y);
-        } else if (ev.kind === "ability" || ev.kind === "heal" || ev.kind === "capture" || ev.kind === "spawn") {
-          if (window.AudioFX) AudioFX.hit();
-          if (window.Particles && ev.x != null) Particles.hitSpark(ev.x, ev.y);
-        }
-      } catch (e) {}
+      if (ev.kind === "hit") spawnHitParticles(ev.x, ev.y, 6);
+      if (ev.kind === "death") spawnDeathParticles(ev.x, ev.y, 16);
+      if (ev.kind === "capture") spawnCaptureParticles(ev.x, ev.y, ev.team);
+      if (ev.kind === "spawn") spawnSpawnParticles(ev.x, ev.y, ev.team);
+      if (ev.kind === "ultimate") spawnUltimateParticles(ev);
+      if (ev.kind === "heal") spawnHealParticles(ev.x, ev.y);
+      if (ev.kind === "structure_hit") spawnHitParticles(ev.x, ev.y, 10);
     }
   }
 
-  function drawNpc(ctx2, screenX, screenY, npc) {
-    ctx2.save();
-    ctx2.translate(screenX, screenY);
-    var col = npc.color || (npc.team === 0 ? "#3d9e58" : "#5a8ec8");
-    var size = npc.isRam ? 18 : 11;
-    ctx2.fillStyle = "rgba(0,0,0,0.32)";
-    ctx2.beginPath();
-    ctx2.ellipse(0, size * 0.7, size * 0.9, size * 0.35, 0, 0, Math.PI * 2);
-    ctx2.fill();
-    ctx2.save();
-    ctx2.rotate(npc.angle || 0);
-    if (npc.isRam) {
-      ctx2.fillStyle = "#4a3720";
-      ctx2.fillRect(-20, -10, 36, 20);
-      ctx2.fillStyle = "#8a8a8a";
-      ctx2.beginPath();
-      ctx2.moveTo(16, -8); ctx2.lineTo(28, 0); ctx2.lineTo(16, 8); ctx2.closePath();
-      ctx2.fill();
-      ctx2.fillStyle = col;
-      ctx2.fillRect(-6, -16, 12, 6);
-    } else {
-      ctx2.fillStyle = col;
-      ctx2.fillRect(-size * 0.7, -size * 0.7, size * 1.4, size * 1.4);
-      ctx2.fillStyle = "#d4b896";
-      ctx2.beginPath();
-      ctx2.arc(0, -size * 1.1, size * 0.45, 0, Math.PI * 2);
-      ctx2.fill();
+  function spawnHitParticles(x, y, count) {
+    for (var i = 0; i < count; i++) {
+      particles.push({ x: x, y: y, vx: (Math.random() - 0.5) * 120, vy: (Math.random() - 0.5) * 120, life: 0.3 + Math.random() * 0.2, maxLife: 0.5, color: "#e8dcc0", size: 2 + Math.random() * 2 });
     }
-    ctx2.restore();
-    ctx2.font = "11px monospace";
-    ctx2.textAlign = "center";
-    ctx2.fillStyle = "#e8eef4";
-    ctx2.fillText(npc.name || "NPC", 0, -size - 15);
-    var barW = npc.isRam ? 36 : 24;
-    var pct = (npc.hp || 0) / (npc.maxHp || 40);
-    ctx2.fillStyle = "#0a0c0e";
-    ctx2.fillRect(-barW / 2, -size - 10, barW, 3);
-    ctx2.fillStyle = pct > 0.4 ? "#3dce5c" : "#d13a35";
-    ctx2.fillRect(-barW / 2, -size - 10, barW * Math.max(0, pct), 3);
-    ctx2.restore();
   }
-
-  function init(payload, hostFlag, localId) {
-    isHost = !!hostFlag;
-    myId = localId;
-    currentWeapon = "sword";
-    shakeMag = 0;
-    prevLocalHp = null;
-    lastError = null;
-    frameCount = 0;
-
-    if (window.Particles && Particles.clear) {
-      try { Particles.clear(); } catch (e) {}
+  function spawnDeathParticles(x, y, count) {
+    for (var i = 0; i < count; i++) {
+      particles.push({ x: x, y: y, vx: (Math.random() - 0.5) * 180, vy: (Math.random() - 0.5) * 180, life: 0.4 + Math.random() * 0.4, maxLife: 0.8, color: Math.random() > 0.5 ? "#d13a35" : "#e8dcc0", size: 2 + Math.random() * 3 });
     }
-
-    var players = (payload && payload.players) ? payload.players : [];
-    if (!myId && players.length) myId = players[0].id;
-    if (!myId) myId = isHost ? "host-local" : "client-local";
-
-    if (isHost) {
-      if (typeof HostSim === "undefined") {
-        lastError = "HostSim missing";
-        console.error(lastError);
-        return;
-      }
-      try {
-        HostSim.init(players);
-      } catch (e) {
-        console.error("HostSim.init failed:", e);
-        lastError = "HostSim.init: " + (e.message || e);
-      }
-      if (typeof Network !== "undefined") {
-        Network.onMessage("input", function (msg, fromPeerId) {
-          if (typeof HostSim !== "undefined" && HostSim.setInput) HostSim.setInput(fromPeerId, msg);
-        });
-        Network.onMessage("peer-left", function (msg) {
-          if (msg && msg.peerId && typeof HostSim !== "undefined" && HostSim.markDisconnected) {
-            HostSim.markDisconnected(msg.peerId);
-          }
-        });
-      }
-    } else if (typeof ClientSync !== "undefined") {
-      try {
-        ClientSync.init(playEventFX);
-      } catch (e) {
-        console.error("ClientSync.init failed:", e);
-      }
+  }
+  function spawnCaptureParticles(x, y, team) {
+    var col = team === 0 ? "#3d9e58" : "#5a8ec8";
+    for (var i = 0; i < 20; i++) {
+      particles.push({ x: x, y: y, vx: (Math.random() - 0.5) * 200, vy: (Math.random() - 0.5) * 200, life: 0.5 + Math.random() * 0.3, maxLife: 0.8, color: col, size: 2 + Math.random() * 3 });
+    }
+  }
+  function spawnSpawnParticles(x, y, team) {
+    var col = team === 0 ? "#3d9e58" : "#5a8ec8";
+    for (var i = 0; i < 12; i++) {
+      particles.push({ x: x, y: y, vx: (Math.random() - 0.5) * 100, vy: (Math.random() - 0.5) * 100, life: 0.3 + Math.random() * 0.2, maxLife: 0.5, color: col, size: 2 + Math.random() * 2 });
+    }
+  }
+  function spawnUltimateParticles(ev) {
+    var colors = { whirlwind: "#c9a227", arrow_storm: "#7aa2c8", arcane_blast: "#8a2be2", natures_blessing: "#3d9e58" };
+    var col = colors[ev.ultimateId] || "#e8dcc0";
+    for (var i = 0; i < 24; i++) {
+      particles.push({ x: ev.x, y: ev.y, vx: (Math.random() - 0.5) * 250, vy: (Math.random() - 0.5) * 250, life: 0.4 + Math.random() * 0.4, maxLife: 0.8, color: col, size: 2 + Math.random() * 4 });
+    }
+  }
+  function spawnHealParticles(x, y) {
+    for (var i = 0; i < 10; i++) {
+      particles.push({ x: x, y: y, vx: (Math.random() - 0.5) * 60, vy: -Math.random() * 100 - 30, life: 0.4 + Math.random() * 0.3, maxLife: 0.7, color: "#7dcea0", size: 2 + Math.random() * 2 });
     }
   }
 
-  function start(canvasEl) {
-    canvas = canvasEl;
-    if (!canvas) return;
-    ctx = canvas.getContext("2d");
-    if (window.Camera && Camera.setViewport) Camera.setViewport(canvas.width, canvas.height);
-    vignetteGradient = buildVignette();
-    if (window.Input && Input.init) Input.init(canvas);
-    if (window.TouchControls && TouchControls.init) {
-      try { TouchControls.init(); } catch (e) {}
-    }
-    function selectWeapon(w) {
-      currentWeapon = w;
-      if (window.WeaponBar && WeaponBar.setActive) WeaponBar.setActive(w);
-    }
-    if (window.Input && Input.onWeaponSelect) Input.onWeaponSelect(selectWeapon);
-    if (window.WeaponBar && WeaponBar.init) {
-      try {
-        WeaponBar.init(document.getElementById("weapon-bar"), selectWeapon);
-        WeaponBar.setActive(currentWeapon);
-      } catch (e) {}
-    }
-    if (window.AudioFX && AudioFX.resume) {
-      try { AudioFX.resume(); } catch (e) {}
-    }
-    running = true;
-    lastFrameTime = performance.now();
-    var tickRate = (window.HostSim && HostSim.TICK_RATE) ? HostSim.TICK_RATE : 20;
-    netIntervalId = setInterval(networkTick, 1000 / tickRate);
-    rafId = requestAnimationFrame(renderLoop);
-  }
-
-  function stop() {
-    running = false;
-    if (rafId) cancelAnimationFrame(rafId);
-    if (netIntervalId) clearInterval(netIntervalId);
-  }
-
-  function buildLocalInput() {
-    var move = { dx: 0, dy: 0 };
-    if (window.Input && Input.getMoveVector) move = Input.getMoveVector();
-    return {
-      type: "input",
-      dx: move.dx || 0,
-      dy: move.dy || 0,
-      angle: (window.Input && Input.getAimAngle) ? Input.getAimAngle() : 0,
-      attack: (window.Input && Input.isAttacking) ? Input.isAttacking() : false,
-      weapon: currentWeapon,
-      ability: (window.AbilityInput && AbilityInput.consume) ? AbilityInput.consume() : false,
-    };
-  }
-
-  function networkTick() {
-    try {
-      var input = buildLocalInput();
-      if (isHost && typeof HostSim !== "undefined" && HostSim.setInput && HostSim.tick) {
-        HostSim.setInput(myId, input);
-        HostSim.tick(1 / (HostSim.TICK_RATE || 20));
-        playEventFX(HostSim.getTickEvents ? HostSim.getTickEvents() : []);
-        if (typeof Network !== "undefined" && Network.send && HostSim.getSnapshotPayload) {
-          Network.send(HostSim.getSnapshotPayload());
-        }
-      } else if (typeof Network !== "undefined" && Network.send) {
-        Network.send(input);
-      }
-    } catch (e) {
-      lastError = e.message || String(e);
-      console.error("networkTick", e);
+  function updateParticles(dt) {
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
     }
   }
 
-  function renderLoop() {
-    if (!running || !ctx || !canvas) return;
-    var now = performance.now();
-    var dt = Math.min(0.1, (now - lastFrameTime) / 1000);
-    lastFrameTime = now;
-    frameCount++;
-
-    try {
-      var players = [];
-      var projectiles = [];
-      var npcs = [];
-      var flags = [];
-      var killfeed = [];
-      var timeLeft = 0;
-      var matchOver = false;
-      var winnerName = null;
-      var localPlayer = null;
-      var serverTime = now / 1000;
-
-      if (isHost && typeof HostSim !== "undefined" && HostSim.getState) {
-        var state = HostSim.getState();
-        players = state.players || [];
-        projectiles = state.projectiles || [];
-        npcs = state.npcs || [];
-        flags = state.flags || [];
-        killfeed = state.killfeed || [];
-        timeLeft = state.timeLeft || 0;
-        matchOver = !!state.matchOver;
-        winnerName = state.winnerName;
-        for (var i = 0; i < players.length; i++) {
-          if (players[i].id === myId) { localPlayer = players[i]; break; }
-        }
-        if (!localPlayer && players.length) localPlayer = players[0];
-      } else if (typeof ClientSync !== "undefined") {
-        if (ClientSync.update) ClientSync.update();
-        players = ClientSync.getPlayers ? ClientSync.getPlayers() : [];
-        projectiles = ClientSync.getProjectiles ? ClientSync.getProjectiles() : [];
-        npcs = ClientSync.getNpcs ? ClientSync.getNpcs() : [];
-        flags = ClientSync.getFlags ? ClientSync.getFlags() : [];
-        killfeed = ClientSync.getKillfeed ? ClientSync.getKillfeed() : [];
-        timeLeft = ClientSync.getTimeLeft ? ClientSync.getTimeLeft() : 0;
-        matchOver = ClientSync.isMatchOver ? ClientSync.isMatchOver() : false;
-        winnerName = ClientSync.getWinnerName ? ClientSync.getWinnerName() : null;
-        for (var j = 0; j < players.length; j++) {
-          if (players[j].id === myId) { localPlayer = players[j]; break; }
-        }
-        if (!localPlayer && players.length) localPlayer = players[0];
-      }
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#1a2b1e";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      if (!localPlayer) {
-        ctx.fillStyle = "#e8dcc0";
-        ctx.font = "20px monospace";
-        ctx.textAlign = "center";
-        var statusMsg = isHost ? "Starting camp..." : "Connecting to camp...";
-        ctx.fillText(statusMsg, canvas.width / 2, canvas.height / 2 - 10);
-        ctx.font = "14px monospace";
-        ctx.fillStyle = "#aaa";
-        ctx.fillText("myId: " + String(myId).slice(0, 20) + " players: " + players.length, canvas.width / 2, canvas.height / 2 + 20);
-        if (lastError) {
-          ctx.fillStyle = "#ff6666";
-          ctx.fillText(lastError, canvas.width / 2, canvas.height / 2 + 44);
-        }
-        if (isHost && frameCount > 10 && players.length === 0) {
-          ctx.fillStyle = "#ffaa44";
-          ctx.fillText("Host: forcing solo player...", canvas.width / 2, canvas.height / 2 + 66);
-        }
-        rafId = requestAnimationFrame(renderLoop);
-        return;
-      }
-
-      if (prevLocalHp !== null && localPlayer.hp < prevLocalHp) {
-        shakeMag = Math.min(14, shakeMag + (prevLocalHp - localPlayer.hp) * 0.25 + 4);
-      }
-      prevLocalHp = localPlayer.hp;
-      shakeMag *= 0.9;
-      var shakeX = shakeMag > 0.3 ? (Math.random() - 0.5) * shakeMag : 0;
-      var shakeY = shakeMag > 0.3 ? (Math.random() - 0.5) * shakeMag : 0;
-
-      if (window.Camera && Camera.follow) Camera.follow(localPlayer.x, localPlayer.y);
-      if (window.Particles && Particles.update) {
-        try { Particles.update(dt); } catch (e) {}
-      }
-      if (window.WeaponBar && WeaponBar.setActive) WeaponBar.setActive(localPlayer.weapon || currentWeapon);
-
-      ctx.save();
-      ctx.translate(shakeX, shakeY);
-
-      if (window.GameMap && GameMap.draw && window.Camera) {
-        try {
-          GameMap.draw(ctx, Camera.x, Camera.y, Camera.viewW || canvas.width, Camera.viewH || canvas.height, { flags: flags });
-        } catch (e) {
-          lastError = "Map: " + (e.message || e);
-        }
-      }
-
-      if (typeof drawPlayer === "function" && window.Camera) {
-        var drawOrder = players.slice().sort(function (a, b) { return a.y - b.y; });
-        for (var pi = 0; pi < drawOrder.length; pi++) {
-          var p = drawOrder[pi];
-          var s = Camera.worldToScreen(p.x, p.y);
-          try { drawPlayer(ctx, s.x, s.y, p); } catch (e) {}
-        }
-      }
-
-      if (window.Camera) {
-        for (var ni = 0; ni < npcs.length; ni++) {
-          var n = npcs[ni];
-          if (!n.alive) continue;
-          var ns = Camera.worldToScreen(n.x, n.y);
-          try { drawNpc(ctx, ns.x, ns.y, n); } catch (e) {}
-        }
-      }
-
-      if (typeof drawProjectile === "function" && window.Camera) {
-        for (var qi = 0; qi < projectiles.length; qi++) {
-          var proj = projectiles[qi];
-          var ps = Camera.worldToScreen(proj.x, proj.y);
-          try { drawProjectile(ctx, ps.x, ps.y, proj); } catch (e) {}
-        }
-      }
-
-      if (window.Particles && Particles.draw && window.Camera) {
-        try {
-          Particles.draw(ctx, function (wx, wy) { return Camera.worldToScreen(wx, wy); });
-        } catch (e) {}
-      }
-
-      ctx.restore();
-
-      if (vignetteGradient) {
-        ctx.fillStyle = vignetteGradient;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      }
-
-      if (window.HUD && HUD.draw) {
-        try {
-          HUD.draw(ctx, {
-            localPlayer: localPlayer,
-            allPlayers: players,
-            flags: flags,
-            killfeed: killfeed,
-            timeLeft: timeLeft,
-            matchOver: matchOver,
-            winnerName: winnerName,
-            viewW: canvas.width,
-            viewH: canvas.height,
-            serverTime: serverTime,
-          });
-        } catch (e) {
-          lastError = "HUD: " + (e.message || e);
-        }
-      } else {
-        ctx.fillStyle = "#e8eef4";
-        ctx.font = "16px monospace";
-        ctx.textAlign = "left";
-        ctx.fillText("HP " + Math.round(localPlayer.hp || 0), 16, 28);
-        ctx.fillText((localPlayer.name || "?") + " team " + localPlayer.team, 16, 48);
-      }
-    } catch (e) {
-      lastError = e.message || String(e);
-      console.error("renderLoop", e);
-      ctx.fillStyle = "#1a2b1e";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#ff6666";
-      ctx.font = "16px monospace";
-      ctx.textAlign = "center";
-      ctx.fillText("Error: " + lastError, canvas.width / 2, canvas.height / 2);
+  function drawParticles(ctx, cameraX, cameraY) {
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i];
+      var alpha = Math.max(0, p.life / p.maxLife);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - cameraX - p.size / 2, p.y - cameraY - p.size / 2, p.size, p.size);
     }
-
-    rafId = requestAnimationFrame(renderLoop);
+    ctx.globalAlpha = 1;
   }
 
-  return { init: init, start: start, stop: stop };
-})();
-        
+  function updateCamera(localPlayer, viewW, viewH) {
+    if (!localPlayer || !localPlayer.alive) return;
+    var targetX = localPlayer.x - viewW / 2;
+    var targetY = localPlayer.y - viewH / 2;
+    var mapW = GameMap.WIDTH || 1600;
+    var mapH = GameMap.HEIGHT || 900;
+    targetX = Math.max(0, Math.min(mapW - viewW, targetX));
+    targetY = Math.max(0, Math.min(mapH - viewH, targetY));
+    camera.x += (targetX - camera.x) * 0.1;
+    camera.y += (targetY - camera.y) * 0.1;
+  }
+
+  function drawProjectile(ctx, p, cameraX, cameraY) {
+    var weapon = WEAPONS[p.weaponId];
+    var color = weapon ? (weapon.projectileColor || "#e8dcc0") : "#e8dcc0";
+    ctx.save();
+    ctx.translate(p.x - cameraX,
+                  
