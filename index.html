@@ -1,212 +1,138 @@
-:root {
-  --bg: #0c0e10;
-  --panel: #161a1f;
-  --accent: #c9a227;
-  --accent-dim: #7a5e1a;
-  --text: #e8dcc0;
-  --text-dim: #8a8070;
-  --green: #3d9e58;
-  --blue: #5a8ec8;
-  --red: #d13a35;
-}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Robin's Arena</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=VT323&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/style.css" />
+<link rel="stylesheet" href="css/hud.css" />
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'VT323', monospace;
-  overflow: hidden;
-  height: 100vh;
-}
+<!-- ==================== LOBBY SCREEN ==================== -->
+<div id="lobby-screen">
+  <div class="lobby-container">
 
-#lobby-screen {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  background: radial-gradient(circle at 50% 30%, #1a1e24 0%, #0c0e10 70%);
-}
+    <h1>🏹 ROBIN'S ARENA</h1>
+    <p class="subtitle">Camp vs Castle · classes · conquest</p>
 
-.lobby-container {
-  width: 720px;
-  max-width: 95vw;
-  background: var(--panel);
-  border: 2px solid #2a2e35;
-  border-radius: 12px;
-  padding: 28px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-}
+    <!-- Name Panel -->
+    <div id="panel-name" class="scroll-panel" data-active="true">
+      <div class="name-row">
+        <input type="text" id="player-name" placeholder="Your callsign" maxlength="12" value="Robin" aria-label="Player callsign" autocomplete="off" autofocus />
+      </div>
+      <div class="button-row">
+        <button id="btn-continue" class="btn-primary">Continue →</button>
+      </div>
+    </div>
 
-h1 {
-  font-family: 'Cinzel', serif;
-  font-size: 32px;
-  text-align: center;
-  color: var(--accent);
-  text-shadow: 0 2px 8px rgba(201,162,39,0.3);
-  margin-bottom: 4px;
-}
+    <!-- Choice Panel -->
+    <div id="panel-choice" class="scroll-panel" data-active="false">
+      <div class="button-row" style="flex-direction: column; width: 100%;">
+        <button id="btn-host" class="btn-primary">🏕️ Create a camp</button>
+        <button id="btn-join-open" class="btn-secondary">🔗 Join a camp</button>
+      </div>
+    </div>
 
-.subtitle {
-  text-align: center;
-  color: var(--text-dim);
-  font-size: 16px;
-  margin-bottom: 20px;
-}
+    <!-- Join Panel -->
+    <div id="panel-join" class="scroll-panel" data-active="false">
+      <div class="flex-row">
+        <button id="btn-refresh-camps" class="btn-secondary" style="flex:1;">↻ Refresh camps</button>
+      </div>
+      <ul id="camp-list" class="camp-list">
+        <li class="empty">Scanning for camps…</li>
+      </ul>
+      <div class="or-divider">— Or enter a code —</div>
+      <div class="flex-row">
+        <input type="text" id="input-code" placeholder="CODE (4 letters)" maxlength="4" autocomplete="off" aria-label="Camp code" />
+        <button id="btn-join-confirm" class="btn-primary">Join</button>
+      </div>
+      <button id="btn-join-back" class="btn-secondary back-btn">← Back</button>
+    </div>
 
-.name-row {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 20px;
-}
+    <!-- Lobby Panel -->
+    <div id="panel-lobby" class="scroll-panel" data-active="false">
+      <h2>🏕️ Camp</h2>
+      <p>Code: <strong id="room-code-display">----</strong></p>
+      <p id="lobby-status">Waiting for players…</p>
+      <ul id="player-roster"></ul>
 
-#player-name {
-  background: #0c0e10;
-  border: 1px solid #3a3e45;
-  color: var(--text);
-  padding: 8px 14px;
-  font-family: 'VT323', monospace;
-  font-size: 18px;
-  border-radius: 6px;
-  width: 200px;
-  text-align: center;
-}
+      <div class="section-title">Choose your class</div>
+      <div id="class-picker" class="class-grid">
+        <!-- Populated by JS -->
+      </div>
+      <p class="class-hint">Pick your class · Ability: Space / Q</p>
 
-.section-title {
-  font-family: 'Cinzel', serif;
-  font-size: 16px;
-  color: var(--accent);
-  margin: 16px 0 10px;
-  border-bottom: 1px solid #2a2e35;
-  padding-bottom: 6px;
-}
+      <div class="creator-panel">
+        <div class="color-row">
+          <label>Tunic</label>
+          <div class="color-btn active" style="background:#c0392b;" data-color="tunic" data-val="#c0392b"></div>
+          <div class="color-btn" style="background:#2980b9;" data-color="tunic" data-val="#2980b9"></div>
+          <div class="color-btn" style="background:#27ae60;" data-color="tunic" data-val="#27ae60"></div>
+          <div class="color-btn" style="background:#8e44ad;" data-color="tunic" data-val="#8e44ad"></div>
+          <div class="color-btn" style="background:#d35400;" data-color="tunic" data-val="#d35400"></div>
+          <div class="color-btn" style="background:#2c3e50;" data-color="tunic" data-val="#2c3e50"></div>
+        </div>
+        <div class="color-row">
+          <label>Hood</label>
+          <div class="color-btn active" style="background:#2c3e50;" data-color="hood" data-val="#2c3e50"></div>
+          <div class="color-btn" style="background:#5d4037;" data-color="hood" data-val="#5d4037"></div>
+          <div class="color-btn" style="background:#1a1a2e;" data-color="hood" data-val="#1a1a2e"></div>
+          <div class="color-btn" style="background:#4a6741;" data-color="hood" data-val="#4a6741"></div>
+          <div class="color-btn" style="background:#7f3e3e;" data-color="hood" data-val="#7f3e3e"></div>
+          <div class="color-btn" style="background:#555;" data-color="hood" data-val="#555"></div>
+        </div>
+        <div class="preview-box">
+          <canvas id="preview-canvas" width="64" height="64"></canvas>
+        </div>
+      </div>
 
-.class-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  margin-bottom: 16px;
-}
+      <div class="button-row">
+        <button id="btn-start-game" class="btn-primary hidden">⚔️ Start hunt</button>
+        <button id="btn-lobby-back" class="btn-secondary back-btn">← Leave</button>
+      </div>
+    </div>
 
-.class-card {
-  background: #1e2228;
-  border: 2px solid #2a2e35;
-  border-radius: 8px;
-  padding: 12px 8px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.15s;
-}
+  </div>
+</div>
 
-.class-card:hover {
-  border-color: var(--accent-dim);
-  transform: translateY(-2px);
-}
+<!-- ==================== GAME SCREEN ==================== -->
+<div id="game-screen" class="hidden">
+  <div class="game-viewport">
+    <canvas id="game-canvas" width="960" height="640"></canvas>
+    <div id="touch-zone-move" class="touch-zone touch-zone--left"></div>
+    <div id="touch-zone-aim" class="touch-zone touch-zone--right"></div>
+    <div id="joystick-move" class="joystick"><div class="joystick-knob"></div></div>
+    <div id="joystick-aim" class="joystick"><div class="joystick-knob"></div></div>
+    <div id="weapon-bar" class="weapon-bar"></div>
+    <button id="btn-ability" type="button" class="ability-btn" aria-label="Use ability">ABILITY</button>
+  </div>
+</div>
 
-.class-card.selected {
-  border-color: var(--accent);
-  background: #252a32;
-  box-shadow: 0 0 12px rgba(201,162,39,0.15);
-}
+<!-- Scripts -->
+<script src="js/engine/camera.js"></script>
+<script src="js/engine/input.js"></script>
+<script src="js/engine/map.js"></script>
+<script src="js/engine/touch-controls.js"></script>
+<script src="js/entities/weapons.js"></script>
+<script src="js/entities/classes.js"></script>
+<script src="js/entities/player.js"></script>
+<script src="js/entities/projectile.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/particles.js"></script>
+<script src="js/combat.js"></script>
+<script src="js/host-sim.js"></script>
+<script src="js/client-sync.js"></script>
+<script src="js/network.js"></script>
+<script src="js/ability-input.js"></script>
+<script src="js/hud.js"></script>
+<script src="js/ui-weapon-bar.js"></script>
+<script src="js/game.js"></script>
+<script src="js/main.js"></script>
 
-.class-icon { font-size: 28px; margin-bottom: 4px; }
-.class-name { font-size: 16px; font-weight: bold; color: var(--text); }
-.class-tag { font-size: 12px; color: var(--text-dim); margin: 2px 0; }
-.class-ult { font-size: 11px; color: var(--accent); margin-top: 4px; }
-
-.creator-panel {
-  background: #1e2228;
-  border: 1px solid #2a2e35;
-  border-radius: 8px;
-  padding: 14px;
-  margin-bottom: 16px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-}
-
-.color-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1 1 200px;
-}
-
-.color-row label {
-  font-size: 14px;
-  color: var(--text-dim);
-  min-width: 40px;
-}
-
-.color-btn {
-  width: 22px;
-  height: 22px;
-  border: 2px solid transparent;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: transform 0.1s;
-}
-
-.color-btn:hover { transform: scale(1.15); }
-.color-btn.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 6px rgba(201,162,39,0.4);
-}
-
-.preview-box {
-  width: 100px;
-  height: 100px;
-  background: #0c0e10;
-  border: 2px solid #2a2e35;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: auto;
-}
-
-.preview-box img {
-  image-rendering: pixelated;
-}
-
-.button-row {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-}
-
-.btn-primary, .btn-secondary {
-  font-family: 'VT323', monospace;
-  font-size: 18px;
-  padding: 10px 24px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: #1a1400;
-  font-weight: bold;
-}
-
-.btn-primary:hover {
-  background: #e8d060;
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  background: #2a2e35;
-  color: var(--text);
-  border: 1px solid #3a3e45;
-}
-
-.btn-secondary:hover {
-  background: #3a3e45;
-}
-
-#game-screen {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
+</body>
+</html>
