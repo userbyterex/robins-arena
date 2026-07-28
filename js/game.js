@@ -128,5 +128,112 @@ var Game = (function () {
     var weapon = WEAPONS[p.weaponId];
     var color = weapon ? (weapon.projectileColor || "#e8dcc0") : "#e8dcc0";
     ctx.save();
-    ctx.translate(p.x - cameraX,
-                  
+    ctx.translate(p.x - cameraX, p.y - cameraY);
+    ctx.rotate(p.angle);
+    ctx.fillStyle = color;
+    var w = 6, h = 2;
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.fillRect(-w / 2 + 1, -h / 2 + 0.5, w - 2, h - 1);
+    ctx.restore();
+  }
+
+  function drawNpc(ctx, n, cameraX, cameraY) {
+    if (!n.alive) return;
+    var sx = n.x - cameraX, sy = n.y - cameraY;
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.beginPath(); ctx.ellipse(sx, sy + 10, 8, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = n.color || "#888";
+    ctx.beginPath(); ctx.arc(sx, sy, n.isRam ? 10 : 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#1a1a1a";
+    var eyeX = sx + Math.cos(n.angle) * 4;
+    var eyeY = sy + Math.sin(n.angle) * 4;
+    ctx.beginPath(); ctx.arc(eyeX, eyeY, 2, 0, Math.PI * 2); ctx.fill();
+    var barW = 20, barH = 3;
+    ctx.fillStyle = "#0a0c0e";
+    ctx.fillRect(sx - barW / 2, sy - 14, barW, barH);
+    ctx.fillStyle = n.hp > n.maxHp * 0.4 ? "#3dce5c" : "#d13a35";
+    ctx.fillRect(sx - barW / 2, sy - 14, barW * Math.max(0, n.hp / n.maxHp), barH);
+    ctx.fillStyle = "#e8dcc0";
+    ctx.font = "10px VT323, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(n.name || "?", sx, sy - 18);
+  }
+
+  function loop() {
+    if (!running) return;
+    var now = performance.now() / 1000;
+    var dt = Math.min(now - lastTime, 0.1);
+    lastTime = now;
+    accumulator += dt;
+
+    while (accumulator >= tickDt) {
+      if (isHost || isSolo) {
+        HostSim.setInput(localPlayerId, localInput);
+        HostSim.tick(tickDt);
+        var snapshot = HostSim.getSnapshotPayload();
+        applySnapshot(snapshot);
+        if (typeof NetHost !== "undefined" && NetHost.broadcastSnapshot) {
+          NetHost.broadcastSnapshot(snapshot);
+        }
+      }
+      accumulator -= tickDt;
+    }
+
+    updateParticles(dt);
+
+    var viewW = canvas.width, viewH = canvas.height;
+    var localPlayer = state.players.find(function (p) { return p.id === localPlayerId; });
+    updateCamera(localPlayer, viewW, viewH);
+
+    ctx.clearRect(0, 0, viewW, viewH);
+
+    if (typeof GameMap !== "undefined" && GameMap.draw) {
+      GameMap.draw(ctx, camera.x, camera.y, viewW, viewH, { flags: state.flags });
+    }
+
+    // Draw NPCs
+    for (var ni = 0; ni < state.npcs.length; ni++) {
+      drawNpc(ctx, state.npcs[ni], camera.x, camera.y);
+    }
+
+    // Draw projectiles
+    for (var pi = 0; pi < state.projectiles.length; pi++) {
+      drawProjectile(ctx, state.projectiles[pi], camera.x, camera.y);
+    }
+
+    // Draw players
+    for (var pl = 0; pl < state.players.length; pl++) {
+      var player = state.players[pl];
+      if (typeof drawPlayer === "function") {
+        drawPlayer(ctx, player.x - camera.x, player.y - camera.y, player);
+      }
+    }
+
+    drawParticles(ctx, camera.x, camera.y);
+
+    if (typeof HUD !== "undefined" && HUD.draw) {
+      HUD.draw(ctx, {
+        localPlayer: localPlayer,
+        allPlayers: state.players,
+        flags: state.flags,
+        killfeed: state.killfeed,
+        timeLeft: state.timeLeft,
+        matchOver: state.matchOver,
+        winnerName: state.winnerName,
+        viewW: viewW,
+        viewH: viewH,
+        serverTime: _lastSnapshotAt,
+      });
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  function setInput(input) { localInput = input; }
+  function getLocalPlayer() { return state.players.find(function (p) { return p.id === localPlayerId; }); }
+
+  return { init: init, stop: stop, applySnapshot: applySnapshot, setInput: setInput, getLocalPlayer: getLocalPlayer };
+})();
+window.Game = Game;
+      
