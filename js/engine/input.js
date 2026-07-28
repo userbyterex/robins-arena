@@ -1,98 +1,98 @@
 /**
- * engine/input.js
- * Captura input local: movimiento (WASD/flechas), ángulo de mira (mouse),
- * ataque (click) y cambio de arma (teclas 1-5).
+ * engine/input.js — Keyboard + mouse input with Ultimate support.
  */
-var Input = (function () {
-  var keys = new Set();
-  var mouseX = 0, mouseY = 0;
-  var attackHeld = false;
-  var weaponSelectListener = null;
-  var canvasEl = null;
+var InputManager = (function () {
+  var keys = {};
+  var mouse = { x: 0, y: 0, down: false };
+  var canvas = null;
+  var callback = null;
+  var currentWeapon = "sword";
 
-  var touchMove = { dx: 0, dy: 0 };
-  var touchAimAngle = 0;
-  var touchAiming = false;
-  var touchAttacking = false;
-
-  var WEAPON_KEYS = { "1": "knife", "2": "sword", "3": "axe", "4": "bow", "5": "crossbow" };
-
-  function init(canvas) {
-    canvasEl = canvas;
-    window.addEventListener("keydown", function (e) {
-      keys.add(e.key.toLowerCase());
-      if (WEAPON_KEYS[e.key] && weaponSelectListener) weaponSelectListener(WEAPON_KEYS[e.key]);
-    });
-    window.addEventListener("keyup", function (e) {
-      keys.delete(e.key.toLowerCase());
-    });
-    canvas.addEventListener("mousemove", function (e) {
-      var rect = canvas.getBoundingClientRect();
-      mouseX = ((e.clientX - rect.left) / rect.width) * canvas.width;
-      mouseY = ((e.clientY - rect.top) / rect.height) * canvas.height;
-    });
-    canvas.addEventListener("mousedown", function () { attackHeld = true; });
-    window.addEventListener("mouseup", function () { attackHeld = false; });
-    canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  function init(cvs, cb) {
+    canvas = cvs;
+    callback = cb;
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    canvas.addEventListener("mousemove", onMouseMove);
+    canvas.addEventListener("mousedown", onMouseDown);
+    canvas.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("wheel", onWheel, { passive: false });
   }
 
-  function onWeaponSelect(fn) {
-    weaponSelectListener = fn;
+  function onKeyDown(e) {
+    keys[e.code] = true;
+    if (e.code === "Digit1") currentWeapon = "knife";
+    if (e.code === "Digit2") currentWeapon = "sword";
+    if (e.code === "Digit3") currentWeapon = "axe";
+    if (e.code === "Digit4") currentWeapon = "bow";
+    if (e.code === "Digit5") currentWeapon = "crossbow";
   }
 
-  function selectWeapon(weaponId) {
-    if (weaponSelectListener) weaponSelectListener(weaponId);
+  function onKeyUp(e) {
+    keys[e.code] = false;
   }
 
-  function setTouchMove(dx, dy) {
-    touchMove = { dx: dx, dy: dy };
-  }
-  function clearTouchMove() {
-    touchMove = { dx: 0, dy: 0 };
-  }
-  function setTouchAim(angle, attacking) {
-    touchAimAngle = angle;
-    touchAiming = true;
-    touchAttacking = attacking;
-  }
-  function clearTouchAim() {
-    touchAiming = false;
-    touchAttacking = false;
+  function onMouseMove(e) {
+    var rect = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - rect.left;
+    mouse.y = e.clientY - rect.top;
   }
 
-  function getMoveVector() {
-    if (touchMove.dx !== 0 || touchMove.dy !== 0) return touchMove;
+  function onMouseDown(e) {
+    if (e.button === 0) mouse.down = true;
+  }
+
+  function onMouseUp(e) {
+    if (e.button === 0) mouse.down = false;
+  }
+
+  function onWheel(e) {
+    e.preventDefault();
+    var order = ["knife", "sword", "axe", "bow", "crossbow"];
+    var idx = order.indexOf(currentWeapon);
+    if (e.deltaY > 0) idx = (idx + 1) % order.length;
+    else idx = (idx - 1 + order.length) % order.length;
+    currentWeapon = order[idx];
+  }
+
+  function update() {
+    if (!callback) return;
     var dx = 0, dy = 0;
-    if (keys.has("w") || keys.has("arrowup")) dy -= 1;
-    if (keys.has("s") || keys.has("arrowdown")) dy += 1;
-    if (keys.has("a") || keys.has("arrowleft")) dx -= 1;
-    if (keys.has("d") || keys.has("arrowright")) dx += 1;
-    var len = Math.hypot(dx, dy) || 1;
-    return { dx: dx / len, dy: dy / len };
+    if (keys["KeyW"] || keys["ArrowUp"]) dy -= 1;
+    if (keys["KeyS"] || keys["ArrowDown"]) dy += 1;
+    if (keys["KeyA"] || keys["ArrowLeft"]) dx -= 1;
+    if (keys["KeyD"] || keys["ArrowRight"]) dx += 1;
+    var len = Math.hypot(dx, dy);
+    if (len > 0) { dx /= len; dy /= len; }
+
+    var rect = canvas.getBoundingClientRect();
+    var centerX = rect.width / 2;
+    var centerY = rect.height / 2;
+    var angle = Math.atan2(mouse.y - centerY, mouse.x - centerX);
+
+    // Ultimate: Space or Q (single press detection)
+    var ultimate = false;
+    if (keys["Space"] || keys["KeyQ"]) {
+      if (!keys._ultimateConsumed) {
+        ultimate = true;
+        keys._ultimateConsumed = true;
+      }
+    } else {
+      keys._ultimateConsumed = false;
+    }
+
+    callback({
+      dx: dx,
+      dy: dy,
+      angle: angle,
+      attack: mouse.down,
+      weapon: currentWeapon,
+      ultimate: ultimate,
+    });
   }
 
-  function getAimAngle() {
-    if (touchAiming) return touchAimAngle;
-    if (!canvasEl) return 0;
-    var cx = canvasEl.width / 2;
-    var cy = canvasEl.height / 2;
-    return Math.atan2(mouseY - cy, mouseX - cx);
-  }
+  // Auto-update loop
+  setInterval(update, 1000 / 60);
 
-  function isAttacking() {
-    return attackHeld || touchAttacking;
-  }
-
-  return {
-    init: init,
-    onWeaponSelect: onWeaponSelect,
-    selectWeapon: selectWeapon,
-    getMoveVector: getMoveVector,
-    getAimAngle: getAimAngle,
-    isAttacking: isAttacking,
-    setTouchMove: setTouchMove,
-    clearTouchMove: clearTouchMove,
-    setTouchAim: setTouchAim,
-    clearTouchAim: clearTouchAim,
-  };
+  return { init: init };
 })();
