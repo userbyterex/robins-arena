@@ -1,95 +1,212 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Robins Arena — PvP 4v4</title>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=VT323&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-  <!-- LOBBY SCREEN -->
-  <div id="lobby-screen">
-    <div class="lobby-container">
-      <h1>⚔️ Robins Arena</h1>
-      <p class="subtitle">4v4 Class-Based PvP Conquest</p>
+:root {
+  --bg: #0c0e10;
+  --panel: #161a1f;
+  --accent: #c9a227;
+  --accent-dim: #7a5e1a;
+  --text: #e8dcc0;
+  --text-dim: #8a8070;
+  --green: #3d9e58;
+  --blue: #5a8ec8;
+  --red: #d13a35;
+}
 
-      <div class="name-row">
-        <input type="text" id="player-name" placeholder="Your name" maxlength="12" value="Player">
-      </div>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'VT323', monospace;
+  overflow: hidden;
+  height: 100vh;
+}
 
-      <div class="section-title">Choose Class</div>
-      <div class="class-grid" id="class-select">
-        <div class="class-card selected" data-class="warrior">
-          <div class="class-icon">⚔️</div>
-          <div class="class-name">Warrior</div>
-          <div class="class-tag">Tank & melee bruiser</div>
-          <div class="class-ult">Ult: Whirlwind 🌪️</div>
-        </div>
-        <div class="class-card" data-class="ranger">
-          <div class="class-icon">🏹</div>
-          <div class="class-name">Ranger</div>
-          <div class="class-tag">Speed & ranged DPS</div>
-          <div class="class-ult">Ult: Arrow Storm 🌧️</div>
-        </div>
-        <div class="class-card" data-class="mage">
-          <div class="class-icon">🔮</div>
-          <div class="class-name">Mage</div>
-          <div class="class-tag">Burst magic damage</div>
-          <div class="class-ult">Ult: Arcane Blast 💥</div>
-        </div>
-        <div class="class-card" data-class="healer">
-          <div class="class-icon">🌿</div>
-          <div class="class-name">Healer</div>
-          <div class="class-tag">Support & sustain</div>
-          <div class="class-ult">Ult: Nature's Blessing ✨</div>
-        </div>
-      </div>
+#lobby-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: radial-gradient(circle at 50% 30%, #1a1e24 0%, #0c0e10 70%);
+}
 
-      <div class="section-title">Customize Character</div>
-      <div class="creator-panel">
-        <div class="color-row" id="skin-row"><label>Skin:</label></div>
-        <div class="color-row" id="hair-row"><label>Hair:</label></div>
-        <div class="color-row" id="cloth-row"><label>Cloth:</label></div>
-        <div class="preview-box" id="char-preview"></div>
-      </div>
+.lobby-container {
+  width: 720px;
+  max-width: 95vw;
+  background: var(--panel);
+  border: 2px solid #2a2e35;
+  border-radius: 12px;
+  padding: 28px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
 
-      <div class="button-row">
-        <button id="btn-solo" class="btn-primary">▶ Solo vs Bots</button>
-        <button id="btn-host" class="btn-secondary">🏠 Host Game</button>
-        <button id="btn-join" class="btn-secondary">🔗 Join Game</button>
-      </div>
-    </div>
-  </div>
+h1 {
+  font-family: 'Cinzel', serif;
+  font-size: 32px;
+  text-align: center;
+  color: var(--accent);
+  text-shadow: 0 2px 8px rgba(201,162,39,0.3);
+  margin-bottom: 4px;
+}
 
-  <!-- GAME SCREEN -->
-  <div id="game-screen" style="display:none;">
-    <canvas id="game-canvas"></canvas>
-    <div class="game-ui">
-      <div class="controls-hint">
-        WASD/Arrows: Move | Mouse: Aim | Click: Attack | Space/Q: Ultimate | 1-5: Weapon | ESC: Lobby
-      </div>
-    </div>
-  </div>
+.subtitle {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 16px;
+  margin-bottom: 20px;
+}
 
-  <!-- Scripts -->
-  <script src="js/classes.js"></script>
-  <script src="js/pixel-character.js"></script>
-  <script src="js/engine/map.js"></script>
-  <script src="js/entities/weapons.js"></script>
-  <script src="js/entities/projectile.js"></script>
-  <script src="js/entities/player.js"></script>
-  <script src="js/combat.js"></script>
-  <script src="js/particles.js"></script>
-  <script src="js/host-sim.js"></script>
-  <script src="js/hud.js"></script>
-  <script src="js/engine/camera.js"></script>
-  <script src="js/engine/input.js"></script>
-  <script src="js/ability-input.js"></script>
-  <script src="js/ui-weapon-bar.js"></script>
-  <script src="js/network.js"></script>
-  <script src="js/client-sync.js"></script>
-  <script src="js/game.js"></script>
-  <script src="js/main.js"></script>
-</body>
-</html>
+.name-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+#player-name {
+  background: #0c0e10;
+  border: 1px solid #3a3e45;
+  color: var(--text);
+  padding: 8px 14px;
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  border-radius: 6px;
+  width: 200px;
+  text-align: center;
+}
+
+.section-title {
+  font-family: 'Cinzel', serif;
+  font-size: 16px;
+  color: var(--accent);
+  margin: 16px 0 10px;
+  border-bottom: 1px solid #2a2e35;
+  padding-bottom: 6px;
+}
+
+.class-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.class-card {
+  background: #1e2228;
+  border: 2px solid #2a2e35;
+  border-radius: 8px;
+  padding: 12px 8px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.class-card:hover {
+  border-color: var(--accent-dim);
+  transform: translateY(-2px);
+}
+
+.class-card.selected {
+  border-color: var(--accent);
+  background: #252a32;
+  box-shadow: 0 0 12px rgba(201,162,39,0.15);
+}
+
+.class-icon { font-size: 28px; margin-bottom: 4px; }
+.class-name { font-size: 16px; font-weight: bold; color: var(--text); }
+.class-tag { font-size: 12px; color: var(--text-dim); margin: 2px 0; }
+.class-ult { font-size: 11px; color: var(--accent); margin-top: 4px; }
+
+.creator-panel {
+  background: #1e2228;
+  border: 1px solid #2a2e35;
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 200px;
+}
+
+.color-row label {
+  font-size: 14px;
+  color: var(--text-dim);
+  min-width: 40px;
+}
+
+.color-btn {
+  width: 22px;
+  height: 22px;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.color-btn:hover { transform: scale(1.15); }
+.color-btn.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 6px rgba(201,162,39,0.4);
+}
+
+.preview-box {
+  width: 100px;
+  height: 100px;
+  background: #0c0e10;
+  border: 2px solid #2a2e35;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+}
+
+.preview-box img {
+  image-rendering: pixelated;
+}
+
+.button-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.btn-primary, .btn-secondary {
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #1a1400;
+  font-weight: bold;
+}
+
+.btn-primary:hover {
+  background: #e8d060;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: #2a2e35;
+  color: var(--text);
+  border: 1px solid #3a3e45;
+}
+
+.btn-secondary:hover {
+  background: #3a3e45;
+}
+
+#game-screen {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
