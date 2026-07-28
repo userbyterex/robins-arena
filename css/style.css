@@ -3,38 +3,74 @@
   --panel: #161a1f;
   --accent: #c9a227;
   --accent-dim: #7a5e1a;
+  --accent-glow: rgba(201,162,39,0.15);
   --text: #e8dcc0;
-  --text-dim: #8a8070;
+  --text-dim: #a09888;
   --green: #3d9e58;
   --blue: #5a8ec8;
   --red: #d13a35;
+  --border: #2a2e35;
+  --border-light: #3a3e45;
+  --card-bg: #1e2228;
+  --card-bg-hover: #252a32;
+  --input-bg: #0c0e10;
+  --danger: #c0392b;
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+/* ─── Reset ─── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 body {
+  margin: 0;
   background: var(--bg);
   color: var(--text);
   font-family: 'VT323', monospace;
   overflow: hidden;
-  height: 100vh;
+  min-height: 100dvh;
 }
 
+input, button, textarea, select {
+  font-family: inherit;
+}
+
+/* ─── Focus visible (accessibility) ─── */
+button:focus-visible,
+input:focus-visible,
+.class-card:focus-visible,
+.color-btn:focus-visible,
+.back-btn:focus-visible,
+.join-btn-small:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ─── Lobby Screen ─── */
 #lobby-screen {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
-  background: radial-gradient(circle at 50% 30%, #1a1e24 0%, #0c0e10 70%);
+  min-height: 100dvh;
+  background: radial-gradient(circle at 50% 30%, #1a1e24 0%, var(--bg) 70%);
+  padding: 16px;
 }
 
 .lobby-container {
   width: 720px;
   max-width: 95vw;
   background: var(--panel);
-  border: 2px solid #2a2e35;
+  border: 2px solid var(--border);
   border-radius: 12px;
   padding: 28px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+@media (max-width: 600px) {
+  .lobby-container {
+    padding: 16px;
+    border-radius: 10px;
+  }
 }
 
 h1 {
@@ -46,6 +82,14 @@ h1 {
   margin-bottom: 4px;
 }
 
+h2 {
+  font-family: 'Cinzel', serif;
+  font-size: 22px;
+  text-align: center;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
 .subtitle {
   text-align: center;
   color: var(--text-dim);
@@ -53,6 +97,7 @@ h1 {
   margin-bottom: 20px;
 }
 
+/* ─── Name Input ─── */
 .name-row {
   display: flex;
   justify-content: center;
@@ -60,41 +105,76 @@ h1 {
 }
 
 #player-name {
-  background: #0c0e10;
-  border: 1px solid #3a3e45;
+  background: var(--input-bg);
+  border: 1px solid var(--border-light);
   color: var(--text);
   padding: 8px 14px;
-  font-family: 'VT323', monospace;
   font-size: 18px;
   border-radius: 6px;
   width: 200px;
   text-align: center;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
+#player-name::placeholder {
+  color: var(--text-dim);
+}
+
+#player-name:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* ─── Scroll Panels ─── */
+.scroll-panel {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+}
+
+.scroll-panel[data-active="true"] {
+  display: flex;
+}
+
+/* ─── Section Titles ─── */
 .section-title {
   font-family: 'Cinzel', serif;
   font-size: 16px;
   color: var(--accent);
   margin: 16px 0 10px;
-  border-bottom: 1px solid #2a2e35;
+  border-bottom: 1px solid var(--border);
   padding-bottom: 6px;
+  width: 100%;
+  text-align: left;
 }
 
+/* ─── Class Grid ─── */
 .class-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-bottom: 16px;
+  width: 100%;
+}
+
+@media (max-width: 600px) {
+  .class-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .class-card {
-  background: #1e2228;
-  border: 2px solid #2a2e35;
+  background: var(--card-bg);
+  border: 2px solid var(--border);
   border-radius: 8px;
   padding: 12px 8px;
   text-align: center;
   cursor: pointer;
-  transition: all 0.15s;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
 }
 
 .class-card:hover {
@@ -104,18 +184,45 @@ h1 {
 
 .class-card.selected {
   border-color: var(--accent);
-  background: #252a32;
-  box-shadow: 0 0 12px rgba(201,162,39,0.15);
+  background: var(--card-bg-hover);
+  box-shadow: 0 0 12px var(--accent-glow);
 }
 
-.class-icon { font-size: 28px; margin-bottom: 4px; }
-.class-name { font-size: 16px; font-weight: bold; color: var(--text); }
-.class-tag { font-size: 12px; color: var(--text-dim); margin: 2px 0; }
-.class-ult { font-size: 11px; color: var(--accent); margin-top: 4px; }
+.class-icon {
+  font-size: 28px;
+  margin-bottom: 4px;
+  line-height: 1.2;
+}
 
+.class-name {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--text);
+}
+
+.class-tag {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 2px 0;
+}
+
+.class-ult {
+  font-size: 11px;
+  color: var(--accent);
+  margin-top: 4px;
+}
+
+.class-hint {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin: 4px 0 12px;
+  text-align: center;
+}
+
+/* ─── Creator Panel (colors) ─── */
 .creator-panel {
-  background: #1e2228;
-  border: 1px solid #2a2e35;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 14px;
   margin-bottom: 16px;
@@ -123,6 +230,7 @@ h1 {
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
+  width: 100%;
 }
 
 .color-row {
@@ -147,7 +255,10 @@ h1 {
   transition: transform 0.1s;
 }
 
-.color-btn:hover { transform: scale(1.15); }
+.color-btn:hover {
+  transform: scale(1.15);
+}
+
 .color-btn.active {
   border-color: var(--accent);
   box-shadow: 0 0 6px rgba(201,162,39,0.4);
@@ -156,8 +267,8 @@ h1 {
 .preview-box {
   width: 100px;
   height: 100px;
-  background: #0c0e10;
-  border: 2px solid #2a2e35;
+  background: var(--input-bg);
+  border: 2px solid var(--border);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -165,24 +276,36 @@ h1 {
   margin-left: auto;
 }
 
+.preview-box canvas,
 .preview-box img {
   image-rendering: pixelated;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
+/* ─── Buttons ─── */
 .button-row {
   display: flex;
   gap: 10px;
   justify-content: center;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
-.btn-primary, .btn-secondary {
+.btn-primary,
+.btn-secondary,
+.back-btn,
+.join-btn-small {
   font-family: 'VT323', monospace;
   font-size: 18px;
   padding: 10px 24px;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: transform 0.15s, background-color 0.15s, box-shadow 0.15s;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .btn-primary {
@@ -197,16 +320,229 @@ h1 {
 }
 
 .btn-secondary {
-  background: #2a2e35;
+  background: var(--border);
   color: var(--text);
-  border: 1px solid #3a3e45;
+  border: 1px solid var(--border-light);
 }
 
 .btn-secondary:hover {
-  background: #3a3e45;
+  background: var(--border-light);
 }
 
+.back-btn {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border-light);
+}
+
+.back-btn:hover {
+  background: var(--input-bg);
+  color: var(--text);
+}
+
+.join-btn-small {
+  background: var(--green);
+  color: #fff;
+  padding: 6px 14px;
+  font-size: 14px;
+  border-radius: 4px;
+  margin: 0;
+}
+
+.join-btn-small:hover {
+  background: #4caf50;
+  transform: scale(1.05);
+}
+
+/* ─── Flex Row ─── */
+.flex-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  align-items: center;
+}
+
+.flex-row input {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.flex-row button {
+  width: auto;
+  white-space: nowrap;
+  margin-bottom: 0;
+}
+
+/* ─── Camp List ─── */
+.camp-list {
+  list-style: none;
+  padding: 0;
+  margin: 15px 0;
+  text-align: left;
+  background: var(--input-bg);
+  border-radius: 8px;
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  width: 100%;
+}
+
+.camp-list li {
+  padding: 10px 15px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.camp-list li:last-child {
+  border-bottom: none;
+}
+
+.camp-list .empty {
+  color: var(--text-dim);
+  text-align: center;
+  padding: 20px;
+  font-style: italic;
+}
+
+.camp-code {
+  font-weight: bold;
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+
+/* ─── Or Divider ─── */
+.or-divider {
+  color: var(--text-dim);
+  margin: 12px 0;
+  font-size: 14px;
+  text-align: center;
+  width: 100%;
+}
+
+/* ─── Lobby Panel ─── */
+#panel-lobby {
+  margin-top: 20px;
+  border-top: 2px solid var(--border);
+  padding-top: 20px;
+  width: 100%;
+}
+
+#player-roster {
+  list-style: none;
+  padding: 0;
+  text-align: left;
+  margin: 10px 0;
+  width: 100%;
+}
+
+#player-roster li {
+  padding: 6px 10px;
+  background: var(--input-bg);
+  margin-bottom: 4px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+#player-roster li.you {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+#lobby-status {
+  color: var(--text-dim);
+  margin: 10px 0;
+  text-align: center;
+}
+
+#room-code-display {
+  color: var(--accent);
+  letter-spacing: 2px;
+  font-family: 'VT323', monospace;
+  font-size: 20px;
+}
+
+/* ─── Game Screen ─── */
 #game-screen {
   position: relative;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  min-height: 100dvh;
+  background: var(--bg);
+}
+
+#game-screen.hidden {
+  display: none !important;
+}
+
+.game-viewport {
+  position: relative;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #1a2b1e;
+  border-radius: 8px;
+}
+
+/* ─── Ability Button ─── */
+.ability-btn {
+  position: absolute;
+  bottom: 90px;
+  right: 18px;
+  z-index: 20;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, var(--accent), var(--danger));
+  color: var(--bg);
+  font-weight: bold;
+  font-size: 12px;
+  font-family: 'VT323', monospace;
+  border: 3px solid rgba(255,255,255,0.25);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.1s;
+}
+
+.ability-btn:active {
+  transform: scale(0.92);
+}
+
+.ability-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* ─── Utility ─── */
+.hidden {
+  display: none !important;
+}
+
+/* ─── Scrollbar styling (lobby lists) ─── */
+.camp-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.camp-list::-webkit-scrollbar-track {
+  background: var(--input-bg);
+  border-radius: 0 8px 8px 0;
+}
+
+.camp-list::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 3px;
+}
+
+.camp-list::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-dim);
+}
