@@ -2,13 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Robin's Arena</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=VT323&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="css/style.css" />
-<link rel="stylesheet" href="css/hud.css" />
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
@@ -20,81 +19,55 @@
     <h1>🏹 ROBIN'S ARENA</h1>
     <p class="subtitle">Camp vs Castle · classes · conquest</p>
 
-    <!-- Name Panel -->
-    <div id="panel-name" class="scroll-panel" data-active="true">
-      <div class="name-row">
-        <input type="text" id="player-name" placeholder="Your callsign" maxlength="12" value="Robin" aria-label="Player callsign" autocomplete="off" autofocus />
+    <!-- Name Input -->
+    <div class="name-row">
+      <input type="text" id="player-name" placeholder="Your callsign" maxlength="12" value="Robin" aria-label="Player callsign" autocomplete="off" autofocus />
+    </div>
+
+    <!-- Class Selection -->
+    <div class="section-title">Choose your class</div>
+    <div class="class-grid">
+      <div class="class-card selected" data-class="warrior" tabindex="0" role="button" aria-pressed="true">
+        <div class="class-icon">⚔️</div>
+        <div class="class-name">Warrior</div>
+        <div class="class-tag">Tank · Charge</div>
+        <div class="class-ult">Shield Bash</div>
       </div>
-      <div class="button-row">
-        <button id="btn-continue" class="btn-primary">Continue →</button>
+      <div class="class-card" data-class="ranger" tabindex="0" role="button" aria-pressed="false">
+        <div class="class-icon">🏹</div>
+        <div class="class-name">Ranger</div>
+        <div class="class-tag">Marksman · Volley</div>
+        <div class="class-ult">Arrow Volley</div>
+      </div>
+      <div class="class-card" data-class="mage" tabindex="0" role="button" aria-pressed="false">
+        <div class="class-icon">🔮</div>
+        <div class="class-name">Mage</div>
+        <div class="class-tag">Glass · Nova</div>
+        <div class="class-ult">Arcane Nova</div>
+      </div>
+      <div class="class-card" data-class="monk" tabindex="0" role="button" aria-pressed="false">
+        <div class="class-icon">🥋</div>
+        <div class="class-name">Monk</div>
+        <div class="class-tag">Agile · Heal</div>
+        <div class="class-ult">Spirit Restore</div>
       </div>
     </div>
 
-    <!-- Choice Panel -->
-    <div id="panel-choice" class="scroll-panel" data-active="false">
-      <div class="button-row" style="flex-direction: column; width: 100%;">
-        <button id="btn-host" class="btn-primary">🏕️ Create a camp</button>
-        <button id="btn-join-open" class="btn-secondary">🔗 Join a camp</button>
+    <!-- Character Creator -->
+    <div class="creator-panel">
+      <div class="creator-colors">
+        <div class="color-row" id="skin-row"><label>Skin</label></div>
+        <div class="color-row" id="hair-row"><label>Hair</label></div>
+        <div class="color-row" id="cloth-row"><label>Cloth</label></div>
       </div>
+      <div class="preview-box" id="char-preview"></div>
     </div>
 
-    <!-- Join Panel -->
-    <div id="panel-join" class="scroll-panel" data-active="false">
-      <div class="flex-row">
-        <button id="btn-refresh-camps" class="btn-secondary" style="flex:1;">↻ Refresh camps</button>
-      </div>
-      <ul id="camp-list" class="camp-list">
-        <li class="empty">Scanning for camps…</li>
-      </ul>
-      <div class="or-divider">— Or enter a code —</div>
-      <div class="flex-row">
-        <input type="text" id="input-code" placeholder="CODE (4 letters)" maxlength="4" autocomplete="off" aria-label="Camp code" />
-        <button id="btn-join-confirm" class="btn-primary">Join</button>
-      </div>
-      <button id="btn-join-back" class="btn-secondary back-btn">← Back</button>
-    </div>
-
-    <!-- Lobby Panel -->
-    <div id="panel-lobby" class="scroll-panel" data-active="false">
-      <h2>🏕️ Camp</h2>
-      <p>Code: <strong id="room-code-display">----</strong></p>
-      <p id="lobby-status">Waiting for players…</p>
-      <ul id="player-roster"></ul>
-
-      <div class="section-title">Choose your class</div>
-      <div id="class-picker" class="class-grid">
-        <!-- Populated by JS -->
-      </div>
-      <p class="class-hint">Pick your class · Ability: Space / Q</p>
-
-      <div class="creator-panel">
-        <div class="color-row">
-          <label>Tunic</label>
-          <div class="color-btn active" style="background:#c0392b;" data-color="tunic" data-val="#c0392b"></div>
-          <div class="color-btn" style="background:#2980b9;" data-color="tunic" data-val="#2980b9"></div>
-          <div class="color-btn" style="background:#27ae60;" data-color="tunic" data-val="#27ae60"></div>
-          <div class="color-btn" style="background:#8e44ad;" data-color="tunic" data-val="#8e44ad"></div>
-          <div class="color-btn" style="background:#d35400;" data-color="tunic" data-val="#d35400"></div>
-          <div class="color-btn" style="background:#2c3e50;" data-color="tunic" data-val="#2c3e50"></div>
-        </div>
-        <div class="color-row">
-          <label>Hood</label>
-          <div class="color-btn active" style="background:#2c3e50;" data-color="hood" data-val="#2c3e50"></div>
-          <div class="color-btn" style="background:#5d4037;" data-color="hood" data-val="#5d4037"></div>
-          <div class="color-btn" style="background:#1a1a2e;" data-color="hood" data-val="#1a1a2e"></div>
-          <div class="color-btn" style="background:#4a6741;" data-color="hood" data-val="#4a6741"></div>
-          <div class="color-btn" style="background:#7f3e3e;" data-color="hood" data-val="#7f3e3e"></div>
-          <div class="color-btn" style="background:#555;" data-color="hood" data-val="#555"></div>
-        </div>
-        <div class="preview-box">
-          <canvas id="preview-canvas" width="64" height="64"></canvas>
-        </div>
-      </div>
-
-      <div class="button-row">
-        <button id="btn-start-game" class="btn-primary hidden">⚔️ Start hunt</button>
-        <button id="btn-lobby-back" class="btn-secondary back-btn">← Leave</button>
-      </div>
+    <!-- Action Buttons -->
+    <div class="button-row lobby-actions">
+      <button id="btn-solo" class="btn-primary">⚔️ Solo Hunt</button>
+      <button id="btn-host" class="btn-primary">🏕️ Host Camp</button>
+      <button id="btn-join" class="btn-secondary">🔗 Join Camp</button>
     </div>
 
   </div>
@@ -102,18 +75,25 @@
 
 <!-- ==================== GAME SCREEN ==================== -->
 <div id="game-screen" class="hidden">
-  <div class="game-viewport">
-    <canvas id="game-canvas" width="960" height="640"></canvas>
-    <div id="touch-zone-move" class="touch-zone touch-zone--left"></div>
-    <div id="touch-zone-aim" class="touch-zone touch-zone--right"></div>
-    <div id="joystick-move" class="joystick"><div class="joystick-knob"></div></div>
-    <div id="joystick-aim" class="joystick"><div class="joystick-knob"></div></div>
-    <div id="weapon-bar" class="weapon-bar"></div>
-    <button id="btn-ability" type="button" class="ability-btn" aria-label="Use ability">ABILITY</button>
-  </div>
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Touch Zones -->
+  <div id="touch-zone-move" class="touch-zone touch-zone--left"></div>
+  <div id="touch-zone-aim" class="touch-zone touch-zone--right"></div>
+
+  <!-- Joysticks -->
+  <div id="joystick-move" class="joystick"><div class="joystick-knob"></div></div>
+  <div id="joystick-aim" class="joystick"><div class="joystick-knob"></div></div>
+
+  <!-- Weapon Bar -->
+  <div id="weapon-bar" class="weapon-bar"></div>
+
+  <!-- Ability Button -->
+  <button id="btn-ability" type="button" class="ability-btn" aria-label="Use ability">ABILITY</button>
 </div>
 
-<!-- Scripts -->
+<!-- ==================== SCRIPTS ==================== -->
+<script src="js/pixel-character.js"></script>
 <script src="js/engine/camera.js"></script>
 <script src="js/engine/input.js"></script>
 <script src="js/engine/map.js"></script>
