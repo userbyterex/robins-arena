@@ -1,14 +1,13 @@
 /**
  * engine/input.js — Unified input: keyboard, mouse, touch, ability.
- * Exposes window.Input for touch-controls.js compatibility.
+ * Mobile landscape ready. Attack works with aim joystick.
  */
-
 window.Input = {
   touchMove: { dx: 0, dy: 0 },
   touchAim: { angle: 0, active: false },
   setTouchMove: function (dx, dy) { this.touchMove.dx = dx; this.touchMove.dy = dy; },
   clearTouchMove: function () { this.touchMove.dx = 0; this.touchMove.dy = 0; },
-  setTouchAim: function (angle, active) { this.touchAim.angle = angle; this.touchAim.active = active; },
+  setTouchAim: function (angle, active) { this.touchAim.angle = angle; this.touchAim.active = !!active; },
   clearTouchAim: function () { this.touchAim.active = false; }
 };
 
@@ -42,7 +41,7 @@ var InputManager = (function () {
         var idx = parseInt(e.code.replace("Digit", ""), 10) - 1;
         if (idx >= 0 && idx < WEAPON_LIST.length) setWeapon(WEAPON_LIST[idx]);
       }
-      if (e.code === "Space" || e.code === "KeyQ") {
+      if (e.code === "Space" || e.code === "KeyQ" || e.code === "KeyE") {
         e.preventDefault();
       }
     });
@@ -53,7 +52,7 @@ var InputManager = (function () {
 
     var rectCache = null;
     function getRect() {
-      if (!rectCache || performance.now() - rectCache.time > 500) {
+      if (!rectCache || performance.now() - rectCache.time > 400) {
         rectCache = { rect: canvas.getBoundingClientRect(), time: performance.now() };
       }
       return rectCache.rect;
@@ -86,6 +85,7 @@ var InputManager = (function () {
       setWeapon(WEAPON_LIST[weaponIndex]);
     }, { passive: false });
 
+    // Prevent browser scroll/zoom while playing
     canvas.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false });
     canvas.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
   }
@@ -115,6 +115,7 @@ var InputManager = (function () {
     if (keys["KeyA"] || keys["ArrowLeft"]) dx = -1;
     if (keys["KeyD"] || keys["ArrowRight"]) dx = 1;
 
+    // Touch move overrides keyboard when active
     if (window.Input && window.Input.touchMove) {
       if (window.Input.touchMove.dx !== 0 || window.Input.touchMove.dy !== 0) {
         dx = window.Input.touchMove.dx;
@@ -126,14 +127,16 @@ var InputManager = (function () {
     if (len > 1) { dx /= len; dy /= len; }
 
     var angle = 0;
-    if (window.Input && window.Input.touchAim && window.Input.touchAim.active) {
+    var touchAimActive = window.Input && window.Input.touchAim && window.Input.touchAim.active;
+
+    if (touchAimActive) {
       angle = window.Input.touchAim.angle;
     } else if ((playerX !== 0 || playerY !== 0) && typeof Camera !== "undefined" && Camera.screenToWorld) {
       var worldMouse = Camera.screenToWorld(mouse.x, mouse.y);
       angle = Math.atan2(worldMouse.y - playerY, worldMouse.x - playerX);
-    } else {
-      var cx = canvas ? canvas.width / 2 : 0;
-      var cy = canvas ? canvas.height / 2 : 0;
+    } else if (canvas) {
+      var cx = canvas.width / 2;
+      var cy = canvas.height / 2;
       angle = Math.atan2(mouse.y - cy, mouse.x - cx);
     }
 
@@ -142,11 +145,14 @@ var InputManager = (function () {
       ultimate = AbilityInput.consume();
     }
 
+    // CRITICAL: attack on mobile = aim joystick beyond dead zone
+    var attack = mouse.down || touchAimActive;
+
     callback({
       dx: dx,
       dy: dy,
       angle: angle,
-      attack: mouse.down,
+      attack: attack,
       weapon: currentWeapon,
       ultimate: ultimate
     });
