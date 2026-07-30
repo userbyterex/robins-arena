@@ -23,18 +23,22 @@
     var btn = document.getElementById("btn-ability");
     if (!btn) return;
     function down(e) {
-      e.preventDefault();
+      if (e && e.preventDefault) e.preventDefault();
       pressed = true;
       edge = true;
     }
     function up(e) {
-      e.preventDefault();
+      if (e && e.preventDefault) e.preventDefault();
       pressed = false;
     }
     btn.addEventListener("touchstart", down, { passive: false });
     btn.addEventListener("touchend", up);
+    btn.addEventListener("touchcancel", up);
     btn.addEventListener("mousedown", down);
     btn.addEventListener("mouseup", up);
+    btn.addEventListener("pointerdown", down);
+    btn.addEventListener("pointerup", up);
+    btn.style.touchAction = "manipulation";
   });
 
   window.AbilityInput = {
