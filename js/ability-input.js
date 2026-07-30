@@ -1,6 +1,6 @@
 /**
- * ability-input.js — Space / Q / E / mobile button for class ability.
- * Load AFTER input.js, BEFORE game.js.
+ * ability-input.js — Space / Q / E + big mobile ULT button.
+ * Landscape-friendly, prevents accidental scroll.
  */
 (function () {
   var pressed = false;
@@ -22,23 +22,34 @@
   document.addEventListener("DOMContentLoaded", function () {
     var btn = document.getElementById("btn-ability");
     if (!btn) return;
+
     function down(e) {
       if (e && e.preventDefault) e.preventDefault();
+      if (e && e.stopPropagation) e.stopPropagation();
       pressed = true;
       edge = true;
+      btn.classList.add("pressed");
     }
     function up(e) {
       if (e && e.preventDefault) e.preventDefault();
       pressed = false;
+      btn.classList.remove("pressed");
     }
+
+    // Prefer pointer events (covers mouse + touch)
+    btn.addEventListener("pointerdown", down, { passive: false });
+    btn.addEventListener("pointerup", up, { passive: false });
+    btn.addEventListener("pointercancel", up, { passive: false });
+    btn.addEventListener("pointerleave", up, { passive: false });
+
+    // Fallback touch
     btn.addEventListener("touchstart", down, { passive: false });
-    btn.addEventListener("touchend", up);
-    btn.addEventListener("touchcancel", up);
-    btn.addEventListener("mousedown", down);
-    btn.addEventListener("mouseup", up);
-    btn.addEventListener("pointerdown", down);
-    btn.addEventListener("pointerup", up);
+    btn.addEventListener("touchend", up, { passive: false });
+    btn.addEventListener("touchcancel", up, { passive: false });
+
     btn.style.touchAction = "manipulation";
+    btn.style.webkitUserSelect = "none";
+    btn.style.userSelect = "none";
   });
 
   window.AbilityInput = {
@@ -51,6 +62,6 @@
     },
     isDown: function () {
       return pressed;
-    },
+    }
   };
 })();
