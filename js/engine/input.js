@@ -152,8 +152,8 @@ var InputManager = (function () {
     });
   }
 
-  return {
+    return {
     init: init,
-    setPlayerPos: setPlayerPos
+    setPlayerPos: setPlayerPos,
+    setWeapon: setWeapon   // ← AÑADIDO
   };
-})();
