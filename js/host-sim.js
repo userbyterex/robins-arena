@@ -543,4 +543,221 @@ var HostSim = (function () {
       n.angle = Math.atan2(target.y - n.y, target.x - n.x);
       var rad = n.isRam ? 16 : 12;
 
-      if (bestD > (n.range 
+      if (bestD > (n.range || 36)) {
+        var stepX = Math.cos(n.angle) * n.speed * dt;
+        var stepY = Math.sin(n.angle) * n.speed * dt;
+        var prevX = n.x, prevY = n.y;
+        var resolved = moveEntity(n.x, n.y, stepX, stepY, rad);
+        var moved = Math.hypot(resolved.x - prevX, resolved.y - prevY);
+        if (moved < 0.4) {
+          n.stuckTimer = (n.stuckTimer || 0) + dt;
+          var side = (i % 2 === 0) ? 1 : -1;
+          var alt = moveEntity(n.x, n.y, -stepY * side, stepX * side, rad);
+          if (Math.hypot(alt.x - prevX, alt.y - prevY) > moved) resolved = alt;
+          if (n.stuckTimer > 1.5) {
+            n.x += (Math.random() - 0.5) * 50;
+            n.y += (Math.random() - 0.5) * 50;
+            n.stuckTimer = 0;
+          }
+        } else {
+          n.stuckTimer = 0;
+        }
+        n.x = resolved.x; n.y = resolved.y;
+      } else {
+        // Attack
+        if (now - (n.lastAttackAt || 0) >= (n.attackCooldown || 0.9)) {
+          n.lastAttackAt = now;
+          if (target.isStructure && target.flag) {
+            target.flag.structureHp = Math.max(0, (target.flag.structureHp || 0) - (n.isRam ? RAM_STRUCTURE_DAMAGE : 8));
+            tickEvents.push({ kind: "structure_hit", flagId: target.flag.id, hp: target.flag.structureHp });
+            if (target.flag.structureHp <= 0) {
+              matchOver = true;
+              winnerName = n.team === 0 ? "Camp" : "Castle";
+            }
+          } else {
+            damageUnit(target, n.damage || 12, now, null);
+          }
+        }
+      }
+    }
+    // Cleanup dead NPCs after a while
+    npcs = npcs.filter(function (n) { return n.alive || (n.respawnAt && now < n.respawnAt + 2); });
+  }
+
+  function updatePlayers(dt, now) {
+    players.forEach(function (p) {
+      if (!p.alive) {
+        if (Number.isFinite(p.respawnAt) && now >= p.respawnAt) {
+          var info = spawnAssignment.get(p.id);
+          if (info) {
+            p.x = info.x; p.y = info.y;
+          }
+          p.hp = p.maxHp;
+          p.alive = true;
+          p.shield = 0;
+          p.ultimateCharge = Math.min(40, p.ultimateCharge || 0);
+        }
+        return;
+      }
+      if (p.stunUntil && now < p.stunUntil) return;
+
+      var input = inputs.get(p.id) || { dx: 0, dy: 0, angle: p.angle, attack: false, weapon: p.weapon, ultimate: false };
+
+      // Movement (human players)
+      if (p.id.indexOf("bot-") !== 0) {
+        var len = Math.hypot(input.dx || 0, input.dy || 0);
+        if (len > 0.1) {
+          var speed = BASE_SPEED * (p.speedMul || 1) * dt;
+          var mx = (input.dx / len) * speed;
+          var my = (input.dy / len) * speed;
+          var moved = moveEntity(p.x, p.y, mx, my, PLAYER_RADIUS);
+          p.x = moved.x; p.y = moved.y;
+        }
+        if (input.angle != null) p.angle = input.angle;
+        if (input.weapon && WEAPONS[input.weapon]) p.weapon = input.weapon;
+      }
+
+      // Attack
+      if (input.attack) {
+        var weapon = (typeof WEAPONS !== "undefined") ? WEAPONS[p.weapon] : null;
+        if (weapon && now - (p.lastAttackAt || 0) >= (weapon.cooldown || 0.6)) {
+          p.lastAttackAt = now;
+          p.lastAttackAnimAt = now;
+
+          if (weapon.type === "melee") {
+            var targets = Array.from(players.values()).concat(npcs);
+            var half = ((weapon.angle || 60) * Math.PI / 180) / 2;
+            for (var i = 0; i < targets.length; i++) {
+              var t = targets[i];
+              if (!t.alive || t.team === p.team || t.id === p.id) continue;
+              var dist = Math.hypot(t.x - p.x, t.y - p.y);
+              if (dist > (weapon.range || 50) + PLAYER_RADIUS) continue;
+              var ang = Math.atan2(t.y - p.y, t.x - p.x);
+              var diff = Math.abs(((ang - p.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+              if (diff > half) continue;
+              damageUnit(t, weapon.damage || 30, now, p);
+            }
+          } else if (weapon.type === "ranged" && typeof createProjectile === "function") {
+            var proj = createProjectile(p, p.weapon);
+            if (proj) projectiles.push(proj);
+          }
+        }
+      }
+
+      // Ultimate
+      if (input.ultimate) {
+        useUltimate(p, now);
+      }
+    });
+  }
+
+  function updateProjectiles(dt, now) {
+    var survivors = [];
+    for (var i = 0; i < projectiles.length; i++) {
+      var p = projectiles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.ttl = (p.ttl || 2) - dt;
+      if (p.ttl <= 0) continue;
+      if (typeof GameMap !== "undefined" && GameMap.pointBlocked && GameMap.pointBlocked(p.x, p.y)) continue;
+
+      var hit = false;
+      var all = Array.from(players.values()).concat(npcs);
+      for (var j = 0; j < all.length; j++) {
+        var t = all[j];
+        if (!t.alive || t.id === p.ownerId || (t.team != null && t.team === p.ownerTeam)) continue;
+        if (Math.hypot(t.x - p.x, t.y - p.y) <= PLAYER_RADIUS + (p.radius || 5)) {
+          var owner = players.get(p.ownerId);
+          damageUnit(t, p.damage || 30, now, owner);
+          hit = true;
+          break;
+        }
+      }
+      if (!hit) survivors.push(p);
+    }
+    projectiles = survivors;
+  }
+
+  function checkWin(now) {
+    if (matchOver) return;
+    var elapsed = now - matchStartTime;
+    if (elapsed >= MATCH_DURATION) {
+      matchOver = true;
+      // Score by HQ HP + captures
+      var campScore = 0, castleScore = 0;
+      flags.forEach(function (f) {
+        if (f.id === "camp_hq") campScore += (f.structureHp || 0);
+        if (f.id === "castle_hq") castleScore += (f.structureHp || 0);
+        if (f.team === 0) campScore += 50;
+        if (f.team === 1) castleScore += 50;
+      });
+      winnerName = campScore >= castleScore ? "Camp" : "Castle";
+      return;
+    }
+    flags.forEach(function (f) {
+      if (f.structureHp != null && f.structureHp <= 0) {
+        matchOver = true;
+        winnerName = f.id === "camp_hq" ? "Castle" : "Camp";
+      }
+    });
+  }
+
+  function tick(dt) {
+    if (matchOver) return;
+    var now = performance.now() / 1000;
+    tickEvents = [];
+
+    updateBots(dt, now);
+    updatePlayers(dt, now);
+    updateProjectiles(dt, now);
+    updateFlags(dt);
+    updateTowers(now);
+    spawnFromZones(dt);
+    updateNpcs(dt, now);
+    checkWin(now);
+  }
+
+  function getSnapshotPayload() {
+    var now = performance.now() / 1000;
+    return {
+      players: Array.from(players.values()).map(function (p) {
+        return {
+          id: p.id, name: p.name, x: p.x, y: p.y, angle: p.angle,
+          hp: p.hp, maxHp: p.maxHp, weapon: p.weapon, alive: p.alive,
+          team: p.team, classId: p.classId, score: p.score || 0,
+          ultimateCharge: p.ultimateCharge || 0, shield: p.shield || 0,
+          appearance: p.appearance, lastHitFlashAt: p.lastHitFlashAt,
+          lastAttackAnimAt: p.lastAttackAnimAt, colorIndex: p.colorIndex
+        };
+      }),
+      projectiles: projectiles.slice(),
+      npcs: npcs.filter(function (n) { return n.alive; }).map(function (n) {
+        return {
+          id: n.id, name: n.name, x: n.x, y: n.y, angle: n.angle,
+          hp: n.hp, maxHp: n.maxHp, alive: n.alive, team: n.team,
+          color: n.color, isRam: n.isRam
+        };
+      }),
+      flags: flags.map(function (f) {
+        return {
+          id: f.id, name: f.name, x: f.x, y: f.y, radius: f.radius,
+          team: f.team, progress: f.progress, capturingTeam: f.capturingTeam,
+          structureHp: f.structureHp, structureMax: f.structureMax
+        };
+      }),
+      killfeed: killfeed.slice(0, 6),
+      timeLeft: Math.max(0, MATCH_DURATION - (now - matchStartTime)),
+      matchOver: matchOver,
+      winnerName: winnerName,
+      events: tickEvents.slice()
+    };
+  }
+
+  return {
+    init: init,
+    setInput: setInput,
+    markDisconnected: markDisconnected,
+    tick: tick,
+    getSnapshotPayload: getSnapshotPayload
+  };
+})();
