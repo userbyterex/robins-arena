@@ -1,8 +1,7 @@
 /**
  * main.js — Entry point, lobby flow, game lifecycle.
- * Viral-ready: share codes, onboarding, smooth transitions.
+ * Viral-ready: share codes, class + appearance sync, smooth transitions.
  */
-
 (function () {
   "use strict";
 
@@ -21,8 +20,8 @@
     ["panel-setup", "panel-join", "panel-lobby"].forEach(function (pid) {
       var el = $(pid);
       if (!el) return;
-      if (pid === id) { el.classList.add("active"); }
-      else { el.classList.remove("active"); }
+      if (pid === id) el.classList.add("active");
+      else el.classList.remove("active");
     });
   }
 
@@ -61,6 +60,7 @@
     categories.forEach(function (cat) {
       var row = $(cat.row);
       if (!row) return;
+      row.querySelectorAll(".color-btn").forEach(function (b) { b.remove(); });
       var list = cat.colors || [];
       list.forEach(function (color, cidx) {
         var btn = document.createElement("button");
@@ -127,13 +127,15 @@
       card.setAttribute("aria-pressed", "true");
       selectedClass = card.getAttribute("data-class");
       updatePreview();
-      AudioFX.resume();
-      AudioFX.beep({ freq: 600, duration: 0.06, type: "sine", volume: 0.08 });
+      if (typeof AudioFX !== "undefined") {
+        AudioFX.resume();
+        AudioFX.beep({ freq: 600, duration: 0.06, type: "sine", volume: 0.08 });
+      }
     });
   }
 
   function getName() {
-    var n = $("player-name").value.trim();
+    var n = $("player-name") ? $("player-name").value.trim() : "";
     if (!n) n = "Hunter" + Math.floor(Math.random() * 999);
     return n.substring(0, 12);
   }
@@ -147,18 +149,45 @@
       if (p.isYou) li.classList.add("you");
       var icon = document.createElement("span");
       icon.className = "class-icon-small";
-      icon.textContent = p.classId === "warrior" ? "⚔️" : p.classId === "ranger" ? "🏹" : p.classId === "mage" ? "🔮" : "🥋";
+      icon.textContent = p.classId === "warrior" ? "⚔️" :
+                         p.classId === "ranger" ? "🏹" :
+                         p.classId === "mage" ? "🔮" : "🥋";
       li.appendChild(icon);
       li.appendChild(document.createTextNode(" " + p.name + (p.isYou ? " (you)" : "")));
       list.appendChild(li);
     });
+
+    var status = $("lobby-status");
+    if (status) {
+      status.textContent = roster.length >= 2
+        ? roster.length + " hunters ready"
+        : "Waiting for hunters… (min 2)";
+    }
+
+    var btn = $("btn-start-game");
+    if (btn && isHost) {
+      btn.disabled = roster.length < 2;
+      btn.classList.toggle("hidden", false);
+    }
   }
 
-  function addToRoster(id, name, classId, isYou) {
+  function addToRoster(id, name, classId, isYou, appearance) {
     for (var i = 0; i < roster.length; i++) {
-      if (roster[i].id === id) { roster[i].name = name; roster[i].classId = classId; updateRosterUI(); return; }
+      if (roster[i].id === id) {
+        roster[i].name = name;
+        roster[i].classId = classId || "warrior";
+        roster[i].appearance = appearance || null;
+        updateRosterUI();
+        return;
+      }
     }
-    roster.push({ id: id, name: name, classId: classId || "warrior", isYou: !!isYou });
+    roster.push({
+      id: id,
+      name: name,
+      classId: classId || "warrior",
+      isYou: !!isYou,
+      appearance: appearance || null
+    });
     updateRosterUI();
   }
 
@@ -169,19 +198,22 @@
 
   function buildLocalConfig() {
     return {
-      id: Network.getMyId ? Network.getMyId() : "local-" + Date.now(),
+      id: (typeof Network !== "undefined" && Network.getMyId) ? Network.getMyId() : "local-" + Date.now(),
       name: getName(),
       colorIndex: 0,
       team: 0,
       classId: selectedClass,
-      appearance: appearance
+      appearance: Object.assign({}, appearance)
     };
   }
 
   function runCountdown(seconds, onDone) {
     var overlay = $("countdown-overlay");
     var numEl = $("countdown-number");
-    if (!overlay || !numEl) { if (onDone) onDone(); return; }
+    if (!overlay || !numEl) {
+      if (onDone) onDone();
+      return;
+    }
     overlay.classList.remove("hidden");
     var count = seconds;
     function tick() {
@@ -191,13 +223,17 @@
         numEl.style.animation = "none";
         numEl.offsetHeight;
         numEl.style.animation = "";
-        AudioFX.beep({ freq: 800 - count * 100, duration: 0.15, type: "square", volume: 0.12 });
+        if (typeof AudioFX !== "undefined") {
+          AudioFX.beep({ freq: 800 - count * 100, duration: 0.15, type: "square", volume: 0.12 });
+        }
         count--;
         setTimeout(tick, 800);
       } else {
         numEl.textContent = "HUNT!";
         numEl.style.fontSize = "60px";
-        AudioFX.beep({ freq: 1200, duration: 0.3, type: "sawtooth", volume: 0.15 });
+        if (typeof AudioFX !== "undefined") {
+          AudioFX.beep({ freq: 1200, duration: 0.3, type: "sawtooth", volume: 0.15 });
+        }
         setTimeout(function () {
           overlay.classList.add("hidden");
           numEl.style.fontSize = "";
@@ -212,18 +248,16 @@
     if (gameRunning) return;
     gameRunning = true;
 
-    document.getElementById("lobby-screen").classList.add("hidden");
-    document.getElementById("game-screen").classList.remove("hidden");
+    var lobby = document.getElementById("lobby-screen");
+    var game = document.getElementById("game-screen");
+    if (lobby) lobby.classList.add("hidden");
+    if (game) game.classList.remove("hidden");
 
     var canvas = $("game-canvas");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-
-    var myConfig = null;
-    for (var i = 0; i < configs.length; i++) {
-      if (configs[i].id === myId) { myConfig = configs[i]; break; }
+    if (canvas) {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
     }
-    if (!myConfig) myConfig = configs[0];
 
     Game.init({
       canvas: canvas,
@@ -233,40 +267,56 @@
       playerConfigs: configs
     });
 
-    InputManager.init(canvas, function (input) {
-      Game.setInput(input);
-    });
+    if (typeof InputManager !== "undefined") {
+      InputManager.init(canvas, function (input) {
+        Game.setInput(input);
+      });
+    }
 
     if (typeof TouchControls !== "undefined") TouchControls.init();
 
     if (typeof WeaponBar !== "undefined" && $("weapon-bar")) {
-      WeaponBar.init($("weapon-bar"), function(weaponId) {
+      WeaponBar.init($("weapon-bar"), function (weaponId) {
         if (typeof InputManager !== "undefined" && InputManager.setWeapon) {
           InputManager.setWeapon(weaponId);
         }
       });
     }
 
-    AudioFX.resume();
-    AudioFX.startBattleMusic();
+    if (typeof AudioFX !== "undefined") {
+      AudioFX.resume();
+      AudioFX.startBattleMusic();
+    }
 
     runCountdown(3, function () {});
   }
 
   function backToLobby() {
-    if (gameRunning) { Game.stop(); gameRunning = false; }
+    if (gameRunning) {
+      if (typeof Game !== "undefined") Game.stop();
+      gameRunning = false;
+    }
     if (typeof Network !== "undefined") Network.leaveRoom();
     roster = [];
     isHost = false;
     isSolo = false;
     roomCode = null;
-    document.getElementById("game-screen").classList.add("hidden");
-    document.getElementById("lobby-screen").classList.remove("hidden");
+
+    var game = document.getElementById("game-screen");
+    var lobby = document.getElementById("lobby-screen");
+    if (game) game.classList.add("hidden");
+    if (lobby) lobby.classList.remove("hidden");
     showPanel("panel-setup");
-    AudioFX.stopBattleMusic();
-    AudioFX.startLobbyMusic();
-    $("btn-start-game").classList.add("hidden");
-    $("join-error").textContent = "";
+
+    if (typeof AudioFX !== "undefined") {
+      AudioFX.stopBattleMusic();
+      AudioFX.startLobbyMusic();
+    }
+
+    var btn = $("btn-start-game");
+    if (btn) btn.classList.add("hidden");
+    var err = $("join-error");
+    if (err) err.textContent = "";
   }
 
   function startSolo() {
@@ -275,6 +325,7 @@
     var cfg = buildLocalConfig();
     cfg.team = 0;
     localPlayerConfig = cfg;
+
     var botConfigs = [
       { id: "bot-1", name: "Bot_Archer", colorIndex: 1, team: 1, classId: "ranger", appearance: { skin: "#f5d0a9", hair: "#222", cloth: "#2980b9" } },
       { id: "bot-2", name: "Bot_Mage", colorIndex: 2, team: 1, classId: "mage", appearance: { skin: "#f5d0a9", hair: "#8e44ad", cloth: "#8e44ad" } },
@@ -288,13 +339,15 @@
     isSolo = false;
     var cfg = buildLocalConfig();
     localPlayerConfig = cfg;
-    roster = [{ id: cfg.id, name: cfg.name, classId: cfg.classId, isYou: true }];
+    roster = [{ id: cfg.id, name: cfg.name, classId: cfg.classId, isYou: true, appearance: cfg.appearance }];
 
     Network.hostRoom(cfg.name, {
-      onPlayerJoin: function (peerId, peerName) {
-        addToRoster(peerId, peerName, "warrior", false);
+      onPlayerJoin: function (peerId, peerName, classId, appearance) {
+        addToRoster(peerId, peerName, classId || "warrior", false, appearance);
         Network.send({ type: "roster_update", roster: roster });
-        AudioFX.beep({ freq: 520, duration: 0.12, type: "sine", volume: 0.1 });
+        if (typeof AudioFX !== "undefined") {
+          AudioFX.beep({ freq: 520, duration: 0.12, type: "sine", volume: 0.1 });
+        }
       },
       onPlayerLeave: function (peerId) {
         removeFromRoster(peerId);
@@ -309,14 +362,14 @@
         backToLobby();
       },
       onClose: function () { backToLobby(); }
-    });
+    }, cfg.classId, cfg.appearance);
 
     roomCode = Network.getRoomCode ? Network.getRoomCode() : "????";
-    $("room-code-display").textContent = roomCode;
-    $("lobby-status").textContent = "Share the code! Waiting for hunters…";
-    $("btn-start-game").classList.remove("hidden");
+    if ($("room-code-display")) $("room-code-display").textContent = roomCode;
+    if ($("lobby-status")) $("lobby-status").textContent = "Share the code! Waiting for hunters…";
+    if ($("btn-start-game")) $("btn-start-game").classList.remove("hidden");
     showPanel("panel-lobby");
-    AudioFX.startLobbyMusic();
+    if (typeof AudioFX !== "undefined") AudioFX.startLobbyMusic();
   }
 
   function openJoinPanel() {
@@ -331,14 +384,15 @@
     var camps = [];
     try { camps = Network.listOpenCamps(); } catch (e) {}
     if (!camps || !camps.length) {
-      list.innerHTML = '<li class="empty">No camps found nearby.<br>Ask your friend for the 4-letter code!</li>';
+      list.innerHTML = '<li class="empty">No camps found on this device.<br>Ask your friend for the 4-letter code!</li>';
       return;
     }
     camps.forEach(function (camp) {
       var li = document.createElement("li");
-      li.innerHTML = '<span class="camp-code">' + camp.code + '</span> — ' + (camp.name || "Unknown") + '<button class="btn-small join-btn">Join</button>';
+      li.innerHTML = '<span class="camp-code">' + camp.code + '</span> — ' + (camp.name || "Unknown") +
+        ' <button class="btn-small join-btn">Join</button>';
       li.querySelector(".join-btn").addEventListener("click", function () {
-        $("input-code").value = camp.code;
+        if ($("input-code")) $("input-code").value = camp.code;
         confirmJoin();
       });
       list.appendChild(li);
@@ -346,13 +400,14 @@
   }
 
   function confirmJoin() {
-    var code = $("input-code").value.toUpperCase().trim();
+    var code = ($("input-code") ? $("input-code").value : "").toUpperCase().trim();
     var errEl = $("join-error");
     if (!code || code.length !== 4) {
-      errEl.textContent = "Enter a 4-letter code.";
+      if (errEl) errEl.textContent = "Enter a 4-letter code.";
       return;
     }
-    errEl.textContent = "Connecting…";
+    if (errEl) errEl.textContent = "Connecting…";
+
     var cfg = buildLocalConfig();
     localPlayerConfig = cfg;
 
@@ -362,50 +417,68 @@
         launchGame(allConfigs, cfg.id, false, false);
       },
       onError: function (err) {
-        errEl.textContent = (err.message || "Could not join. Wrong code or camp closed.");
+        if (errEl) errEl.textContent = (err.message || "Could not join. Wrong code or camp closed.");
       },
       onClose: function () { backToLobby(); }
-    });
+    }, cfg.classId, cfg.appearance);
 
     Network.onMessage("roster_update", function (msg) {
-      if (msg.roster) { roster = msg.roster; updateRosterUI(); }
+      if (msg.roster) {
+        roster = msg.roster.map(function (r) {
+          return {
+            id: r.id,
+            name: r.name,
+            classId: r.classId || "warrior",
+            isYou: r.id === cfg.id,
+            appearance: r.appearance || null
+          };
+        });
+        updateRosterUI();
+      }
     });
 
     roomCode = code;
-    $("room-code-display").textContent = code;
-    $("lobby-status").textContent = "Connected! Waiting for host to start…";
-    $("btn-start-game").classList.add("hidden");
-    roster = [{ id: cfg.id, name: cfg.name, classId: cfg.classId, isYou: true }];
+    if ($("room-code-display")) $("room-code-display").textContent = code;
+    if ($("lobby-status")) $("lobby-status").textContent = "Connected! Waiting for host to start…";
+    if ($("btn-start-game")) $("btn-start-game").classList.add("hidden");
+    roster = [{ id: cfg.id, name: cfg.name, classId: cfg.classId, isYou: true, appearance: cfg.appearance }];
     updateRosterUI();
     showPanel("panel-lobby");
   }
 
   function hostStartGame() {
     if (!isHost) return;
+    if (roster.length < 2) return;
+
     var configs = [];
     for (var i = 0; i < roster.length; i++) {
       var r = roster[i];
       configs.push({
         id: r.id,
         name: r.name,
-        colorIndex: r.isYou ? 0 : (i % 4),
-        team: r.isYou ? 0 : 1,
+        colorIndex: i % 4,
+        team: i % 2, // balanced teams
         classId: r.classId || "warrior",
-        appearance: r.isYou ? appearance : { skin: "#f5d0a9", hair: "#5d4037", cloth: "#2980b9" }
+        appearance: r.appearance || { skin: "#f5d0a9", hair: "#5d4037", cloth: "#2980b9" }
       });
     }
     Network.startGame({ playerConfigs: configs });
   }
 
   function copyCode() {
-    var code = $("room-code-display").textContent;
+    var code = $("room-code-display") ? $("room-code-display").textContent : "";
     if (!code || code === "----") return;
+
+    var shareText = "Join my Robin's Arena camp! Code: " + code + "\nPlay free → " + (window.location.href || "https://your-pages-url");
+
     try {
       navigator.clipboard.writeText(code).then(function () {
         var btn = $("btn-copy-code");
-        var old = btn.textContent;
-        btn.textContent = "✅ Copied!";
-        setTimeout(function () { btn.textContent = old; }, 1500);
+        if (btn) {
+          var old = btn.textContent;
+          btn.textContent = "✅ Copied!";
+          setTimeout(function () { btn.textContent = old; }, 1500);
+        }
       });
     } catch (e) {
       var ta = document.createElement("textarea");
@@ -415,10 +488,11 @@
       document.execCommand("copy");
       document.body.removeChild(ta);
     }
+
     if (navigator.share) {
       navigator.share({
-        title: "Join my Robin's Arena camp!",
-        text: "Join my camp with code: " + code
+        title: "Robin's Arena",
+        text: shareText
       }).catch(function () {});
     }
   }
@@ -433,33 +507,32 @@
   }
 
   function onKeyDown(e) {
-    if (e.key === "Escape" && gameRunning) { backToLobby(); }
+    if (e.key === "Escape" && gameRunning) backToLobby();
   }
 
   window.addEventListener("DOMContentLoaded", function () {
     initCharacterCreator();
     initClassPicker();
 
-    $("btn-solo").addEventListener("click", startSolo);
-    $("btn-host").addEventListener("click", startHost);
-    $("btn-join-open").addEventListener("click", openJoinPanel);
-    $("btn-join-back").addEventListener("click", function () { showPanel("panel-setup"); });
-    $("btn-join-confirm").addEventListener("click", confirmJoin);
-    $("btn-refresh-camps").addEventListener("click", refreshCampList);
-    $("btn-lobby-back").addEventListener("click", backToLobby);
-    $("btn-start-game").addEventListener("click", hostStartGame);
-    $("btn-copy-code").addEventListener("click", copyCode);
+    if ($("btn-solo")) $("btn-solo").addEventListener("click", startSolo);
+    if ($("btn-host")) $("btn-host").addEventListener("click", startHost);
+    if ($("btn-join-open")) $("btn-join-open").addEventListener("click", openJoinPanel);
+    if ($("btn-join-back")) $("btn-join-back").addEventListener("click", function () { showPanel("panel-setup"); });
+    if ($("btn-join-confirm")) $("btn-join-confirm").addEventListener("click", confirmJoin);
+    if ($("btn-refresh-camps")) $("btn-refresh-camps").addEventListener("click", refreshCampList);
+    if ($("btn-lobby-back")) $("btn-lobby-back").addEventListener("click", backToLobby);
+    if ($("btn-start-game")) $("btn-start-game").addEventListener("click", hostStartGame);
+    if ($("btn-copy-code")) $("btn-copy-code").addEventListener("click", copyCode);
 
     window.addEventListener("resize", onResize);
     window.addEventListener("keydown", onKeyDown);
 
     var nameInput = $("player-name");
     if (nameInput && !nameInput.value) {
-      var names = ["Robin", "Marian", "Tuck", "Scarlet", "Will", "Allan", "Much"];
+      var names = ["Robin", "Marian", "Tuck", "Scarlet", "Will", "Allan", "Much", "John"];
       nameInput.value = names[Math.floor(Math.random() * names.length)];
     }
 
-    AudioFX.startLobbyMusic();
+    if (typeof AudioFX !== "undefined") AudioFX.startLobbyMusic();
   });
 })();
-                     
