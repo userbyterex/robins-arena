@@ -1,98 +1,157 @@
 /**
- * particles.js
- * Sistema de partículas minimalista, 100% Canvas (sin imágenes). Se usa para
- * dar "feedback" visual a golpes, muertes y disparos sin depender de sprites.
+ * particles.js — Visual juice: muzzle flash, hit sparks, death bursts,
+ * streak particles, dust, explosions.
  */
-const Particles = (() => {
-  let items = [];
-  const MAX_PARTICLES = 220; // techo de seguridad para dispositivos modestos
+
+var Particles = (function () {
+  var particles = [];
+  var MAX = 400;
 
   function spawn(opts) {
-    if (items.length >= MAX_PARTICLES) items.shift(); // descarta la más vieja
-    items.push({
-      x: opts.x, y: opts.y,
-      vx: opts.vx, vy: opts.vy,
-      life: opts.life, maxLife: opts.life,
-      size: opts.size,
-      color: opts.color,
-      gravity: opts.gravity || 0,
-      shape: opts.shape || "square", // "square" | "circle"
+    if (particles.length >= MAX) return;
+    opts = opts || {};
+    particles.push({
+      x: opts.x || 0,
+      y: opts.y || 0,
+      vx: opts.vx || 0,
+      vy: opts.vy || 0,
+      life: opts.life || 1,
+      maxLife: opts.life || 1,
+      size: opts.size || 3,
+      color: opts.color || "#fff",
+      gravity: opts.gravity != null ? opts.gravity : 0,
+      shape: opts.shape || "circle",
       fade: opts.fade !== false,
-      spin: opts.spin || 0,
-      angle: Math.random() * Math.PI * 2,
+      grow: opts.grow || false
     });
   }
 
-  // Chispa de impacto: golpe de arma cuerpo a cuerpo o flecha clavándose.
-  function hitSpark(x, y, color = "#e8dcc0") {
-    for (let i = 0; i < 6; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const speed = 80 + Math.random() * 120;
-      spawn({ x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, life: 0.25 + Math.random() * 0.15, size: 3, color, gravity: 220 });
-    }
-  }
-
-  // Ráfaga de hojas al morir (temática Sherwood, sin sangre/gore).
-  function deathBurst(x, y) {
-    const leafColors = ["#3fae5a", "#c99b2b", "#7a5e1a", "#2d4a30"];
-    for (let i = 0; i < 14; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const speed = 60 + Math.random() * 140;
-      spawn({
-        x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed - 60,
-        life: 0.6 + Math.random() * 0.4, size: 4 + Math.random() * 3,
-        color: leafColors[i % leafColors.length], gravity: 180, shape: "square", spin: (Math.random() - 0.5) * 10,
-      });
-    }
-  }
-
-  // Estela corta al disparar (arco/ballesta).
-  function muzzlePuff(x, y, color = "#c9a227") {
-    for (let i = 0; i < 4; i++) {
-      const a = Math.random() * Math.PI * 2;
-      spawn({ x, y, vx: Math.cos(a) * 40, vy: Math.sin(a) * 40, life: 0.2, size: 2.5, color, gravity: 0, shape: "circle" });
-    }
-  }
-
-  // Polvo de pasos (opcional, sutil) — usado para el jugador local al moverse.
-  function dust(x, y, color = "rgba(232,220,192,0.25)") {
-    spawn({ x, y, vx: (Math.random() - 0.5) * 20, vy: -10 - Math.random() * 10, life: 0.35, size: 2, color, gravity: -10, shape: "circle" });
-  }
-
   function update(dt) {
-    items = items.filter((p) => p.life > 0);
-    for (const p of items) {
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
       p.life -= dt;
-      p.vy += p.gravity * dt;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      p.angle += p.spin * dt;
+      p.vy += (p.gravity || 0) * dt;
+      if (p.grow) p.size += dt * 10;
     }
   }
 
   function draw(ctx, worldToScreen) {
-    for (const p of items) {
-      const s = worldToScreen(p.x, p.y);
-      const alpha = p.fade ? Math.max(0, p.life / p.maxLife) : 1;
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i];
+      var s = worldToScreen(p.x, p.y);
+      var alpha = p.fade ? Math.max(0, p.life / p.maxLife) : 1;
       ctx.save();
       ctx.globalAlpha = alpha;
-      ctx.translate(s.x, s.y);
-      ctx.rotate(p.angle);
       ctx.fillStyle = p.color;
       if (p.shape === "circle") {
         ctx.beginPath();
-        ctx.arc(0, 0, p.size * alpha, 0, Math.PI * 2);
+        ctx.arc(s.x, s.y, p.size, 0, Math.PI * 2);
         ctx.fill();
       } else {
-        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+        ctx.fillRect(s.x - p.size / 2, s.y - p.size / 2, p.size, p.size);
       }
       ctx.restore();
     }
   }
 
-  function clear() {
-    items = [];
+  function dust(x, y, color) {
+    for (var i = 0; i < 4; i++) {
+      spawn({
+        x: x + (Math.random() - 0.5) * 12,
+        y: y + (Math.random() - 0.5) * 6,
+        vx: (Math.random() - 0.5) * 20,
+        vy: -Math.random() * 15 - 5,
+        life: 0.3 + Math.random() * 0.2,
+        size: 2 + Math.random() * 2,
+        color: color || "rgba(200,190,170,0.3)",
+        gravity: -10
+      });
+    }
   }
 
-  return { spawn, hitSpark, deathBurst, muzzlePuff, dust, update, draw, clear };
+  function explosion(x, y, color, count) {
+    count = count || 12;
+    for (var i = 0; i < count; i++) {
+      var angle = Math.random() * Math.PI * 2;
+      var speed = 30 + Math.random() * 80;
+      spawn({
+        x: x, y: y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0.3 + Math.random() * 0.4,
+        size: 2 + Math.random() * 3,
+        color: color || "#e8dcc0",
+        gravity: 20
+      });
+    }
+  }
+
+  function muzzlePuff(x, y) {
+    spawn({ x: x, y: y, vx: 0, vy: 0, life: 0.06, size: 35, color: "rgba(255,240,200,0.4)", gravity: 0, shape: "circle", fade: true });
+    for (var i = 0; i < 5; i++) {
+      var a = Math.random() * Math.PI * 2;
+      spawn({
+        x: x, y: y,
+        vx: Math.cos(a) * 20,
+        vy: Math.sin(a) * 20 - 10,
+        life: 0.2 + Math.random() * 0.15,
+        size: 3 + Math.random() * 4,
+        color: "rgba(200,200,200,0.25)",
+        gravity: -5
+      });
+    }
+  }
+
+  function hitSpark(x, y) {
+    for (var i = 0; i < 6; i++) {
+      var a = Math.random() * Math.PI * 2;
+      var s = 40 + Math.random() * 60;
+      spawn({
+        x: x, y: y,
+        vx: Math.cos(a) * s,
+        vy: Math.sin(a) * s,
+        life: 0.15 + Math.random() * 0.1,
+        size: 1.5 + Math.random() * 2,
+        color: Math.random() > 0.5 ? "#ffcc66" : "#ff8844",
+        gravity: 30
+      });
+    }
+    spawn({ x: x, y: y, vx: 0, vy: 0, life: 0.2, size: 12, color: "rgba(209,58,53,0.2)", gravity: 0, shape: "circle" });
+  }
+
+  function deathBurst(x, y) {
+    explosion(x, y, "#e8dcc0", 20);
+    explosion(x, y, "#c9a227", 10);
+    spawn({ x: x, y: y, vx: 0, vy: 0, life: 0.4, size: 5, color: "rgba(201,162,39,0.5)", gravity: 0, shape: "circle", grow: true });
+  }
+
+  function streakBurst(x, y) {
+    for (var i = 0; i < 15; i++) {
+      var a = Math.random() * Math.PI * 2;
+      spawn({
+        x: x, y: y,
+        vx: Math.cos(a) * (30 + Math.random() * 50),
+        vy: Math.sin(a) * (30 + Math.random() * 50) - 20,
+        life: 0.4 + Math.random() * 0.3,
+        size: 2 + Math.random() * 3,
+        color: "#c9a227",
+        gravity: -15
+      });
+    }
+  }
+
+  return {
+    spawn: spawn,
+    update: update,
+    draw: draw,
+    dust: dust,
+    explosion: explosion,
+    muzzlePuff: muzzlePuff,
+    hitSpark: hitSpark,
+    deathBurst: deathBurst,
+    streakBurst: streakBurst
+  };
 })();
