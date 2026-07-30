@@ -1,6 +1,6 @@
 /**
  * ui-weapon-bar.js
- * Botones reales de HTML para elegir arma.
+ * Botones reales de HTML para elegir arma. Funciona con táctil y ratón.
  */
 var WeaponBar = (function () {
   var buttons = {};
@@ -15,7 +15,13 @@ var WeaponBar = (function () {
       btn.className = "weapon-btn";
       btn.setAttribute("aria-label", w.name);
       btn.innerHTML = w.icon + (i + 1);
-      btn.addEventListener("click", function () { onSelect(wid); });
+      btn.style.touchAction = "manipulation";
+
+      btn.addEventListener("pointerdown", function (e) {
+        e.preventDefault();
+        onSelect(wid);
+      });
+
       container.appendChild(btn);
       buttons[wid] = btn;
     });
