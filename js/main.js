@@ -1,6 +1,6 @@
 /**
  * main.js — Entry point, lobby flow, game lifecycle.
- * Viral-ready: share codes, class + appearance sync, smooth transitions.
+ * Scroll-safe: body.playing only during match.
  */
 (function () {
   "use strict";
@@ -171,12 +171,12 @@
     }
   }
 
-  function addToRoster(id, name, classId, isYou, appearance) {
+  function addToRoster(id, name, classId, isYou, appearanceData) {
     for (var i = 0; i < roster.length; i++) {
       if (roster[i].id === id) {
         roster[i].name = name;
         roster[i].classId = classId || "warrior";
-        roster[i].appearance = appearance || null;
+        roster[i].appearance = appearanceData || null;
         updateRosterUI();
         return;
       }
@@ -186,7 +186,7 @@
       name: name,
       classId: classId || "warrior",
       isYou: !!isYou,
-      appearance: appearance || null
+      appearance: appearanceData || null
     });
     updateRosterUI();
   }
@@ -248,6 +248,8 @@
     if (gameRunning) return;
     gameRunning = true;
 
+    document.body.classList.add("playing");
+
     var lobby = document.getElementById("lobby-screen");
     var game = document.getElementById("game-screen");
     if (lobby) lobby.classList.add("hidden");
@@ -302,6 +304,8 @@
     isSolo = false;
     roomCode = null;
 
+    document.body.classList.remove("playing");
+
     var game = document.getElementById("game-screen");
     var lobby = document.getElementById("lobby-screen");
     if (game) game.classList.add("hidden");
@@ -342,8 +346,8 @@
     roster = [{ id: cfg.id, name: cfg.name, classId: cfg.classId, isYou: true, appearance: cfg.appearance }];
 
     Network.hostRoom(cfg.name, {
-      onPlayerJoin: function (peerId, peerName, classId, appearance) {
-        addToRoster(peerId, peerName, classId || "warrior", false, appearance);
+      onPlayerJoin: function (peerId, peerName, classId, appearanceData) {
+        addToRoster(peerId, peerName, classId || "warrior", false, appearanceData);
         Network.send({ type: "roster_update", roster: roster });
         if (typeof AudioFX !== "undefined") {
           AudioFX.beep({ freq: 520, duration: 0.12, type: "sine", volume: 0.1 });
@@ -457,7 +461,7 @@
         id: r.id,
         name: r.name,
         colorIndex: i % 4,
-        team: i % 2, // balanced teams
+        team: i % 2,
         classId: r.classId || "warrior",
         appearance: r.appearance || { skin: "#f5d0a9", hair: "#5d4037", cloth: "#2980b9" }
       });
@@ -469,7 +473,7 @@
     var code = $("room-code-display") ? $("room-code-display").textContent : "";
     if (!code || code === "----") return;
 
-    var shareText = "Join my Robin's Arena camp! Code: " + code + "\nPlay free → " + (window.location.href || "https://your-pages-url");
+    var shareText = "Join my Robin's Arena camp! Code: " + code + "\nPlay free → " + (window.location.href || "");
 
     try {
       navigator.clipboard.writeText(code).then(function () {
