@@ -1,55 +1,75 @@
 # Robin's Arena 🏹
 
-Deathmatch multijugador 2D, ambientado en el bosque de Sherwood. 2-4 jugadores,
-5 armas (cuchillo, espada, hacha, arco, ballesta), sin servidor propio.
+**Conquest multiplayer arena** set in Sherwood Forest.  
+2-4 players · 4 classes · Capture zones · Destroy the enemy HQ · Free, no install.
 
-## Cómo jugar
+Play instantly in any modern browser (desktop + mobile).
 
-1. Escribe tu nombre y sella el pergamino.
-2. **Fundar campamento** crea una sala y te da un código de 4 letras. Compártelo.
-3. Los demás eligen **Unirme con código** e ingresan ese código.
-4. Cuando haya 2-4 jugadores, el anfitrión pulsa **Comenzar la cacería**.
-5. Controles:
-   - **PC:** `WASD` moverse · mouse apuntar · clic izquierdo atacar · `1-5` cambiar de arma.
-   - **Móvil/tablet:** toca y arrastra en la mitad izquierda de la pantalla para
-     moverte; toca y arrastra en la mitad derecha para apuntar (mantén el dedo
-     alejado del centro para atacar sin soltar); toca los íconos de abajo para
-     cambiar de arma.
-6. Gana quien llegue a 5 muertes o tenga más al cabo de 3 minutos.
+---
 
-## Cómo funciona (resumen técnico)
+## How to Play
 
-No hay backend propio. Un jugador (el **anfitrión**) simula toda la partida en su
-propio navegador y la transmite a los demás por conexión directa **peer-to-peer**
-(WebRTC, vía PeerJS). Ver `docs/GAME_DESIGN.md` para el detalle completo de
-arquitectura, protocolo de red y mecánica de combate.
+1. Type your name and pick a **class** (Warrior / Ranger / Mage / Monk).
+2. Customize skin, hair and cloth.
+3. Choose:
+   - **Solo vs Bots** → play immediately against AI
+   - **Host Camp** → get a 4-letter code and share it
+   - **Join Camp** → enter a friend’s code
+4. Host starts the hunt when ready.
 
-## Desplegar gratis en GitHub Pages
+### Goal
+- Capture the mid zones (**Nymphs**, **Village**, **Outpost**) to spawn units.
+- Protect your **HQ** and destroy the enemy HQ.
+- Use class ultimates (Space / ULT button) when charged.
 
-1. Crea un repositorio nuevo en GitHub (puede ser público, gratis).
-2. Sube **todo el contenido de esta carpeta** (`index.html`, `css/`, `js/`, `docs/`)
-   a la raíz del repositorio — no lo pongas dentro de una subcarpeta.
-3. En el repo: **Settings → Pages → Source → Deploy from a branch**, elige la
-   rama `main` y la carpeta `/ (root)`. Guarda.
-4. En 1-2 minutos el juego queda publicado en:
-   `https://TU-USUARIO.github.io/NOMBRE-DEL-REPO/`
-5. Listo — comparte ese link con tus amigos, no requiere instalar nada.
+### Controls
 
-## Requisitos / notas
+**Desktop**
+- `WASD` — move
+- Mouse — aim
+- Left click — attack
+- `1-5` — switch weapon
+- `Space` — Ultimate
 
-- Funciona en cualquier navegador moderno de escritorio o móvil (Chrome,
-  Firefox, Edge, Safari). En PC se juega con teclado y mouse; en móvil/tablet
-  aparecen automáticamente dos joysticks táctiles y una barra de armas con
-  botones — se detecta con CSS (`pointer: coarse` vs `fine`), no hace falta
-  configurar nada.
-- Los 4 jugadores deben mantener la pestaña abierta durante la partida — si el
-  anfitrión cierra la pestaña, la partida termina (es quien simula el juego).
-- No usa imágenes ni sonidos externos: todo el arte es dibujado con Canvas 2D y
-  los efectos de sonido se generan con Web Audio API. Cero archivos que puedan
-  faltar al desplegar.
-- 100% gratis: GitHub Pages para el hosting, y el servidor de señalización
-  público de PeerJS solo para el saludo inicial entre navegadores.
+**Mobile / Tablet**
+- Left half of screen → move joystick
+- Right half → aim + attack
+- Bottom weapon icons
+- ULT button
 
-## Estructura del proyecto
+---
 
-Ver el árbol de archivos completo y el rol de cada uno en `docs/GAME_DESIGN.md`.
+## Classes
+
+| Class    | Role          | Ultimate-style ability      |
+|----------|---------------|-----------------------------|
+| Warrior  | Tank          | Whirlwind / Shield Bash     |
+| Ranger   | Marksman      | Arrow Storm / Volley        |
+| Mage     | Glass cannon  | Arcane Blast / Nova         |
+| Monk     | Support       | Nature’s Blessing / Heal    |
+
+---
+
+## Technical overview
+
+- **100% client-side** — no backend of your own.
+- Host simulates the match (authoritative).
+- Clients send inputs and receive snapshots via **WebRTC** (PeerJS).
+- Deploy free on **GitHub Pages**.
+- All art and sound generated in code (Canvas 2D + Web Audio).
+
+---
+
+## Deploy on GitHub Pages (free)
+
+1. Create a new public repository.
+2. Upload the whole project to the **root** (`index.html`, `css/`, `js/`, `docs/`).
+3. Go to **Settings → Pages → Source → Deploy from a branch** → `main` / `(root)`.
+4. Wait 1-2 minutes. Your game will be at:  
+   `https://YOUR-USERNAME.github.io/REPO-NAME/`
+
+Share the link with friends. Zero cost, zero server to maintain.
+
+---
+
+## Project structure
