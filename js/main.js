@@ -238,7 +238,14 @@
     });
 
     if (typeof TouchControls !== "undefined") TouchControls.init();
-    if (typeof WeaponBar !== "undefined") WeaponBar.init();
+
+    if (typeof WeaponBar !== "undefined" && $("weapon-bar")) {
+      WeaponBar.init($("weapon-bar"), function(weaponId) {
+        if (typeof InputManager !== "undefined" && InputManager.setWeapon) {
+          InputManager.setWeapon(weaponId);
+        }
+      });
+    }
 
     AudioFX.resume();
     AudioFX.startBattleMusic();
@@ -329,7 +336,7 @@
     }
     camps.forEach(function (camp) {
       var li = document.createElement("li");
-      li.innerHTML = '<span><span class="camp-code">' + camp.code + '</span> — ' + (camp.name || "Unknown") + '</span><button class="btn-small join-btn">Join</button>';
+      li.innerHTML = '<span class="camp-code">' + camp.code + '</span> — ' + (camp.name || "Unknown") + '<button class="btn-small join-btn">Join</button>';
       li.querySelector(".join-btn").addEventListener("click", function () {
         $("input-code").value = camp.code;
         confirmJoin();
@@ -455,3 +462,4 @@
     AudioFX.startLobbyMusic();
   });
 })();
+                     
