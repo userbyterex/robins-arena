@@ -1,407 +1,213 @@
 /**
- * network.js — PeerJS P2P lobby + camps.
- * No template literals. Classic script (no export).
+ * network.js — P2P multiplayer via PeerJS.
+ * Hosts register in localStorage for "camp discovery".
  */
+
 var Network = (function () {
-  var MAX_PLAYERS = 6;
-  var ID_PREFIX = "ra-";
-  var JOIN_TIMEOUT_MS = 12000;
-  var REGISTRY_TTL_MS = 90000;
-
   var peer = null;
+  var connections = [];
+  var roomCode = null;
   var isHost = false;
-  var myName = "";
-  var myId = null;
-  var hostConnections = new Map();
-  var roster = new Map();
+  var msgHandlers = {};
+  var localName = "";
+  var onPlayerJoinCb = null;
+  var onPlayerLeaveCb = null;
+  var onStartCb = null;
+  var onErrorCb = null;
+  var onCloseCb = null;
   var hostConn = null;
-  var joinTimeoutId = null;
-  var callbacks = {};
-  var messageHandlers = {};
-  var discoverPeer = null;
-  var registryAnnounceTimer = null;
-  var currentCode = "";
-  var hostReadyCalled = false;
 
-  function loadLocalRegistry() {
-    try {
-      var raw = localStorage.getItem("ra_open_camps");
-      if (!raw) return {};
-      var data = JSON.parse(raw);
-      var now = Date.now();
-      var cleaned = {};
-      for (var code in data) {
-        if (data[code] && data[code].expires > now) cleaned[code] = data[code];
-      }
-      return cleaned;
-    } catch (e) {
-      return {};
-    }
-  }
-
-  function saveLocalRegistry(map) {
-    try {
-      localStorage.setItem("ra_open_camps", JSON.stringify(map));
-    } catch (e) {}
-  }
-
-  function registerCampLocal(code, hostName, players) {
-    var map = loadLocalRegistry();
-    map[code] = {
-      code: code,
-      hostName: hostName || "Host",
-      players: players || 1,
-      max: MAX_PLAYERS,
-      expires: Date.now() + REGISTRY_TTL_MS,
-    };
-    saveLocalRegistry(map);
-  }
-
-  function unregisterCampLocal(code) {
-    var map = loadLocalRegistry();
-    delete map[code];
-    saveLocalRegistry(map);
-  }
-
-  function onMessage(type, handler) {
-    messageHandlers[type] = handler;
-  }
-
-  function ensurePeerJS() {
-    if (typeof Peer === "undefined") {
-      var err = new Error("PeerJS failed to load. Check connection or disable blockers.");
-      if (callbacks.onError) callbacks.onError(err);
-      return false;
-    }
-    return true;
-  }
-
-  function send(msg) {
-    if (isHost) {
-      hostConnections.forEach(function (entry) {
-        if (entry.conn && entry.conn.open) entry.conn.send(msg);
-      });
-    } else if (hostConn && hostConn.open) {
-      hostConn.send(msg);
-    }
-  }
-
-  function randomCode() {
-    var letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  function generateCode() {
+    var chars = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     var code = "";
-    for (var i = 0; i < 4; i++) code += letters[Math.floor(Math.random() * letters.length)];
+    for (var i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
     return code;
   }
 
-  function rosterList() {
-    var list = [];
-    roster.forEach(function (p, id) {
-      list.push({ id: id, name: p.name, team: p.team });
-    });
-    return list;
+  function getMyId() {
+    if (peer) return peer.id;
+    return "local-" + Math.floor(Math.random() * 1000000);
   }
 
-  function broadcastRoster() {
-    var list = rosterList();
-    hostConnections.forEach(function (entry) {
-      if (entry.conn && entry.conn.open) entry.conn.send({ type: "roster", list: list });
-    });
-    if (callbacks.onRosterUpdate) callbacks.onRosterUpdate(list);
-    if (isHost && currentCode) registerCampLocal(currentCode, myName, roster.size);
+  function getRoomCode() {
+    return roomCode;
   }
 
-  function attachHostConnHandlers(conn) {
-    conn.on("data", function (msg) {
-      if (!msg || !msg.type) return;
-      if (msg.type === "join") {
-        if (roster.size >= MAX_PLAYERS) {
-          conn.send({ type: "room-full" });
-          conn.close();
-          return;
-        }
-        roster.set(conn.peer, { name: msg.name || "Player", team: roster.size % 2 });
-        hostConnections.set(conn.peer, { conn: conn, name: msg.name });
-        broadcastRoster();
-      } else if (messageHandlers[msg.type]) {
-        messageHandlers[msg.type](msg, conn.peer);
-      }
-    });
+  function broadcast(msg) {
+    for (var i = 0; i < connections.length; i++) {
+      try { connections[i].send(msg); } catch (e) {}
+    }
+  }
+
+  function handleMessage(data, fromId) {
+    if (!data || !data.type) return;
+    if (msgHandlers[data.type]) {
+      msgHandlers[data.type](data, fromId);
+    }
+    if (data.type === "snapshot" && !isHost) {
+      if (msgHandlers["snapshot"]) msgHandlers["snapshot"](data, fromId);
+    }
+  }
+
+  function addConnection(conn) {
+    connections.push(conn);
+    conn.on("data", function (data) { handleMessage(data, conn.peer); });
     conn.on("close", function () {
-      roster.delete(conn.peer);
-      hostConnections.delete(conn.peer);
-      broadcastRoster();
-      if (messageHandlers["peer-left"]) {
-        messageHandlers["peer-left"]({ type: "peer-left", peerId: conn.peer });
-      }
+      connections = connections.filter(function (c) { return c !== conn; });
+      if (onPlayerLeaveCb) onPlayerLeaveCb(conn.peer);
     });
     conn.on("error", function (err) {
-      if (callbacks.onError) callbacks.onError(err);
+      console.warn("Peer connection error:", err);
     });
   }
 
-  function startRegistryAnnounce(code) {
-    stopRegistryAnnounce();
-    currentCode = code;
-    registerCampLocal(code, myName, roster.size || 1);
-    registryAnnounceTimer = setInterval(function () {
-      if (isHost && currentCode) registerCampLocal(currentCode, myName, roster.size);
-    }, 20000);
-  }
-
-  function stopRegistryAnnounce() {
-    if (registryAnnounceTimer) {
-      clearInterval(registryAnnounceTimer);
-      registryAnnounceTimer = null;
-    }
-    if (currentCode) unregisterCampLocal(currentCode);
-    currentCode = "";
-  }
-
-  function hostRoom(name, cbs) {
-    callbacks = cbs || {};
+  function hostRoom(name, callbacks) {
     isHost = true;
-    myName = name;
-    roster = new Map();
-    hostReadyCalled = false;
-
-    if (!ensurePeerJS()) return;
-
-    var code = randomCode();
-    if (!hostReadyCalled) {
-      hostReadyCalled = true;
-      if (callbacks.onHostReady) callbacks.onHostReady(code);
-    }
+    localName = name;
+    roomCode = generateCode();
+    callbacks = callbacks || {};
+    onPlayerJoinCb = callbacks.onPlayerJoin || null;
+    onPlayerLeaveCb = callbacks.onPlayerLeave || null;
+    onStartCb = callbacks.onStart || null;
+    onErrorCb = callbacks.onError || null;
+    onCloseCb = callbacks.onClose || null;
 
     try {
-      peer = new Peer(ID_PREFIX + code, { debug: 0 });
+      peer = new Peer("ra-host-" + roomCode + "-" + Date.now(), {
+        host: "0.peerjs.com",
+        port: 443,
+        secure: true,
+        config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }
+      });
     } catch (e) {
-      if (callbacks.onError) callbacks.onError(e);
+      if (onErrorCb) onErrorCb(e);
       return;
     }
 
-    peer.on("open", function (id) {
-      myId = id;
-      roster.set(id, { name: myName, team: 0 });
-      startRegistryAnnounce(code);
-      broadcastRoster();
+    peer.on("open", function () {
+      try {
+        localStorage.setItem("ra-camp-" + roomCode, JSON.stringify({
+          code: roomCode,
+          name: name,
+          ts: Date.now()
+        }));
+      } catch (e) {}
     });
 
     peer.on("connection", function (conn) {
-      attachHostConnHandlers(conn);
+      addConnection(conn);
+      conn.on("open", function () {
+        if (onPlayerJoinCb) onPlayerJoinCb(conn.peer, conn.metadata && conn.metadata.name ? conn.metadata.name : "Hunter");
+      });
     });
 
     peer.on("error", function (err) {
-      var msg = err && err.message ? err.message : String(err);
-      if (err && err.type === "unavailable-id") {
-        var code2 = randomCode();
-        if (!hostReadyCalled) {
-          hostReadyCalled = true;
-          if (callbacks.onHostReady) callbacks.onHostReady(code2);
-        }
-        try {
-          if (peer) peer.destroy();
-          peer = new Peer(ID_PREFIX + code2, { debug: 0 });
-          peer.on("open", function (id) {
-            myId = id;
-            roster.set(id, { name: myName, team: 0 });
-            startRegistryAnnounce(code2);
-            broadcastRoster();
-          });
-          peer.on("connection", function (conn) {
-            attachHostConnHandlers(conn);
-          });
-          peer.on("error", function (e2) {
-            if (callbacks.onError) callbacks.onError(new Error(e2 && e2.message ? e2.message : "Peer error"));
-          });
-        } catch (e3) {
-          if (callbacks.onError) callbacks.onError(e3);
-        }
-        return;
-      }
-      if (callbacks.onError) callbacks.onError(new Error(msg));
+      if (onErrorCb) onErrorCb(err);
+    });
+
+    peer.on("disconnected", function () {
+      if (onCloseCb) onCloseCb();
     });
   }
 
-  function joinRoom(code, name, cbs) {
-    callbacks = cbs || {};
+  function joinRoom(code, name, callbacks) {
     isHost = false;
-    myName = name;
-
-    if (!ensurePeerJS()) return;
-    if (joinTimeoutId) clearTimeout(joinTimeoutId);
+    localName = name;
+    roomCode = code.toUpperCase();
+    callbacks = callbacks || {};
+    onStartCb = callbacks.onStart || null;
+    onErrorCb = callbacks.onError || null;
+    onCloseCb = callbacks.onClose || null;
 
     try {
-      peer = new Peer({ debug: 0 });
+      peer = new Peer("ra-client-" + Date.now(), {
+        host: "0.peerjs.com",
+        port: 443,
+        secure: true,
+        config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }
+      });
     } catch (e) {
-      if (callbacks.onError) callbacks.onError(e);
+      if (onErrorCb) onErrorCb(e);
       return;
     }
 
-    peer.on("open", function (id) {
-      myId = id;
-      var targetId = ID_PREFIX + String(code).toUpperCase();
-      var conn = peer.connect(targetId, { reliable: true });
+    peer.on("open", function () {
+      var hostId = "ra-host-" + roomCode;
+      var conn = peer.connect(hostId, { metadata: { name: name } });
       hostConn = conn;
-
-      joinTimeoutId = setTimeout(function () {
-        if (!conn.open) {
-          if (callbacks.onError) {
-            callbacks.onError(new Error("Could not connect. Check the code — is the host still in the camp?"));
-          }
-          try { conn.close(); } catch (e) {}
-        }
-      }, JOIN_TIMEOUT_MS);
-
       conn.on("open", function () {
-        if (joinTimeoutId) {
-          clearTimeout(joinTimeoutId);
-          joinTimeoutId = null;
-        }
-        conn.send({ type: "join", name: myName });
-        if (callbacks.onJoined) callbacks.onJoined(String(code).toUpperCase());
+        addConnection(conn);
+        conn.send({ type: "hello", name: name });
       });
-
-      conn.on("data", function (msg) {
-        if (!msg || !msg.type) return;
-        if (msg.type === "roster") {
-          if (callbacks.onRosterUpdate) callbacks.onRosterUpdate(msg.list);
-        } else if (msg.type === "room-full") {
-          if (callbacks.onError) callbacks.onError(new Error("This camp is full."));
-        } else if (msg.type === "start") {
-          if (callbacks.onStartGame) callbacks.onStartGame(msg.payload);
-        } else if (messageHandlers[msg.type]) {
-          messageHandlers[msg.type](msg);
-        }
+      conn.on("data", function (data) {
+        handleMessage(data, conn.peer);
       });
-
       conn.on("close", function () {
-        if (callbacks.onHostLeft) callbacks.onHostLeft();
+        if (onCloseCb) onCloseCb();
       });
-
       conn.on("error", function (err) {
-        if (callbacks.onError) callbacks.onError(err);
+        if (onErrorCb) onErrorCb(err);
       });
     });
 
     peer.on("error", function (err) {
-      var msg = err && err.message ? err.message : String(err);
-      if (err && (err.type === "peer-unavailable" || err.type === "network")) {
-        msg = "Camp not found. Check the code or ask the host to create it again.";
-      }
-      if (callbacks.onError) callbacks.onError(new Error(msg));
+      if (onErrorCb) onErrorCb(err);
+    });
+
+    onMessage("start_game", function (msg) {
+      if (onStartCb) onStartCb(msg.payload || {});
+    });
+
+    onMessage("roster_update", function (msg) {
+      if (msgHandlers["roster_update"]) msgHandlers["roster_update"](msg);
     });
   }
 
   function listOpenCamps() {
-    return new Promise(function (resolve) {
-      var local = loadLocalRegistry();
-      var fromLocal = [];
-      for (var k in local) {
-        fromLocal.push({
-          code: local[k].code,
-          hostName: local[k].hostName,
-          players: local[k].players,
-          max: local[k].max || MAX_PLAYERS,
-        });
-      }
-
-      function merge(peerList) {
-        var byCode = {};
-        fromLocal.forEach(function (c) { byCode[c.code] = c; });
-        (peerList || []).forEach(function (c) {
-          if (!byCode[c.code]) byCode[c.code] = c;
-        });
-        var out = [];
-        for (var code in byCode) out.push(byCode[code]);
-        resolve(out);
-      }
-
-      if (typeof Peer === "undefined") {
-        merge([]);
-        return;
-      }
-
-      function runList(p) {
-        if (typeof p.listAllPeers !== "function") {
-          merge([]);
-          return;
-        }
-        try {
-          p.listAllPeers(function (all) {
-            var camps = (all || [])
-              .filter(function (id) {
-                return typeof id === "string" && id.indexOf(ID_PREFIX) === 0 && id.length === ID_PREFIX.length + 4;
-              })
-              .map(function (id) {
-                return {
-                  id: id,
-                  code: id.slice(ID_PREFIX.length).toUpperCase(),
-                  hostName: "Host",
-                  players: "?",
-                  max: MAX_PLAYERS,
-                };
-              });
-            merge(camps);
-          });
-        } catch (e) {
-          merge([]);
+    var camps = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && key.indexOf("ra-camp-") === 0) {
+          var camp = JSON.parse(localStorage.getItem(key));
+          if (camp && camp.code && camp.name && camp.ts && Date.now() - camp.ts < 10 * 60 * 1000) {
+            camps.push(camp);
+          }
         }
       }
-
-      if (peer && peer.open) {
-        runList(peer);
-        return;
-      }
-      if (discoverPeer && discoverPeer.open) {
-        runList(discoverPeer);
-        return;
-      }
-      try {
-        discoverPeer = new Peer({ debug: 0 });
-        var t = setTimeout(function () { merge([]); }, 5000);
-        discoverPeer.on("open", function () {
-          clearTimeout(t);
-          runList(discoverPeer);
-        });
-        discoverPeer.on("error", function () {
-          clearTimeout(t);
-          merge([]);
-        });
-      } catch (e) {
-        merge([]);
-      }
-    });
+    } catch (e) {}
+    return camps;
   }
 
   function startGame(payload) {
     if (!isHost) return;
-    stopRegistryAnnounce();
-    hostConnections.forEach(function (entry) {
-      if (entry.conn && entry.conn.open) entry.conn.send({ type: "start", payload: payload });
-    });
-    if (callbacks.onStartGame) callbacks.onStartGame(payload);
+    broadcast({ type: "start_game", payload: payload });
+    if (onStartCb) onStartCb(payload);
   }
 
   function leaveRoom() {
-    if (joinTimeoutId) {
-      clearTimeout(joinTimeoutId);
-      joinTimeoutId = null;
-    }
-    stopRegistryAnnounce();
-    if (peer) {
-      try { peer.destroy(); } catch (e) {}
-    }
+    try {
+      if (roomCode) localStorage.removeItem("ra-camp-" + roomCode);
+    } catch (e) {}
+    connections.forEach(function (c) { try { c.close(); } catch (e) {} });
+    connections = [];
+    if (peer) { try { peer.destroy(); } catch (e) {} }
     peer = null;
-    hostConn = null;
-    hostConnections.clear();
-    roster = new Map();
+    roomCode = null;
     isHost = false;
-    myId = null;
-    hostReadyCalled = false;
+    hostConn = null;
   }
 
-  function getMyId() {
-    return myId;
+  function send(msg) {
+    if (isHost) {
+      broadcast(msg);
+    } else if (hostConn && hostConn.open) {
+      try { hostConn.send(msg); } catch (e) {}
+    }
+  }
+
+  function onMessage(type, handler) {
+    msgHandlers[type] = handler;
   }
 
   return {
@@ -413,5 +219,6 @@ var Network = (function () {
     send: send,
     onMessage: onMessage,
     getMyId: getMyId,
+    getRoomCode: getRoomCode
   };
 })();
