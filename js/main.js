@@ -7,7 +7,7 @@
   "use strict";
 
   var selectedClass = "warrior";
-  var appearance = { skin: "#f5d0b0", hair: "#5d4037", cloth: "#c0392b" };
+  var appearance = { skin: "", hair: "", cloth: "" };
   var isHost = false;
   var isSolo = false;
   var localPlayerConfig = null;
@@ -26,42 +26,90 @@
     });
   }
 
+  function getPixelColors() {
+    if (typeof PixelCharacter === "undefined") return null;
+    return {
+      skin: PixelCharacter.getSkinTones ? PixelCharacter.getSkinTones() : [],
+      hair: PixelCharacter.getHairColors ? PixelCharacter.getHairColors() : [],
+      cloth: PixelCharacter.getClothColors ? PixelCharacter.getClothColors() : []
+    };
+  }
+
   function initCharacterCreator() {
-    if (typeof PixelCharacter === "undefined" || !PixelCharacter.getDefaultColors) return;
-    var defaults = PixelCharacter.getDefaultColors();
-    var categories = ["skin", "hair", "cloth"];
-    categories.forEach(function (cat, idx) {
-      var row = $(cat + "-row");
+    var colors = getPixelColors();
+    if (!colors) {
+      var box = $("char-preview");
+      if (box) {
+        var cvs = document.createElement("canvas");
+        cvs.width = 64; cvs.height = 64;
+        var ctx = cvs.getContext("2d");
+        ctx.fillStyle = "#c0392b";
+        ctx.fillRect(16, 16, 32, 32);
+        ctx.fillStyle = "#f5d0a9";
+        ctx.fillRect(24, 8, 16, 16);
+        box.appendChild(cvs);
+      }
+      return;
+    }
+
+    var categories = [
+      { key: "skin", row: "skin-row", colors: colors.skin },
+      { key: "hair", row: "hair-row", colors: colors.hair },
+      { key: "cloth", row: "cloth-row", colors: colors.cloth }
+    ];
+
+    categories.forEach(function (cat) {
+      var row = $(cat.row);
       if (!row) return;
-      var colors = defaults[idx] || [];
-      colors.forEach(function (color, cidx) {
+      var list = cat.colors || [];
+      list.forEach(function (color, cidx) {
         var btn = document.createElement("button");
         btn.className = "color-btn" + (cidx === 0 ? " active" : "");
         btn.style.background = color;
-        btn.setAttribute("aria-label", cat + " color");
+        btn.setAttribute("aria-label", cat.key + " color");
         btn.addEventListener("click", function () {
-          appearance[cat] = color;
+          appearance[cat.key] = color;
           row.querySelectorAll(".color-btn").forEach(function (b) { b.classList.remove("active"); });
           btn.classList.add("active");
           updatePreview();
         });
         row.appendChild(btn);
       });
+      if (list.length && !appearance[cat.key]) {
+        appearance[cat.key] = list[0];
+      }
     });
     updatePreview();
   }
 
   function updatePreview() {
     var box = $("char-preview");
-    if (!box || typeof PixelCharacter === "undefined" || !PixelCharacter.generateCanvas) return;
+    if (!box) return;
     box.innerHTML = "";
-    var cvs = PixelCharacter.generateCanvas({
-      skin: appearance.skin,
-      hair: appearance.hair,
-      cloth: appearance.cloth,
-      width: 64,
-      height: 64
-    });
+
+    if (typeof PixelCharacter !== "undefined" && PixelCharacter.generate) {
+      var cvs = PixelCharacter.generate(selectedClass, appearance);
+      if (cvs) {
+        var display = document.createElement("canvas");
+        display.width = 64; display.height = 64;
+        var dctx = display.getContext("2d");
+        dctx.imageSmoothingEnabled = false;
+        dctx.drawImage(cvs, 0, 0, 64, 64);
+        box.appendChild(display);
+        return;
+      }
+    }
+
+    var cvs = document.createElement("canvas");
+    cvs.width = 64; cvs.height = 64;
+    var ctx = cvs.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = appearance.cloth || "#c0392b";
+    ctx.fillRect(20, 28, 24, 20);
+    ctx.fillStyle = appearance.skin || "#f5d0a9";
+    ctx.fillRect(24, 12, 16, 16);
+    ctx.fillStyle = appearance.hair || "#5d4037";
+    ctx.fillRect(22, 8, 20, 8);
     box.appendChild(cvs);
   }
 
@@ -78,6 +126,7 @@
       card.classList.add("selected");
       card.setAttribute("aria-pressed", "true");
       selectedClass = card.getAttribute("data-class");
+      updatePreview();
       AudioFX.resume();
       AudioFX.beep({ freq: 600, duration: 0.06, type: "sine", volume: 0.08 });
     });
@@ -220,9 +269,9 @@
     cfg.team = 0;
     localPlayerConfig = cfg;
     var botConfigs = [
-      { id: "bot-1", name: "Bot_Archer", colorIndex: 1, team: 1, classId: "ranger", appearance: { skin: "#f5d0b0", hair: "#222", cloth: "#2980b9" } },
-      { id: "bot-2", name: "Bot_Mage", colorIndex: 2, team: 1, classId: "mage", appearance: { skin: "#f5d0b0", hair: "#8e44ad", cloth: "#8e44ad" } },
-      { id: "bot-3", name: "Bot_War", colorIndex: 3, team: 0, classId: "warrior", appearance: { skin: "#f5d0b0", hair: "#5d4037", cloth: "#27ae60" } }
+      { id: "bot-1", name: "Bot_Archer", colorIndex: 1, team: 1, classId: "ranger", appearance: { skin: "#f5d0a9", hair: "#222", cloth: "#2980b9" } },
+      { id: "bot-2", name: "Bot_Mage", colorIndex: 2, team: 1, classId: "mage", appearance: { skin: "#f5d0a9", hair: "#8e44ad", cloth: "#8e44ad" } },
+      { id: "bot-3", name: "Bot_War", colorIndex: 3, team: 0, classId: "warrior", appearance: { skin: "#f5d0a9", hair: "#5d4037", cloth: "#27ae60" } }
     ];
     launchGame([cfg].concat(botConfigs), cfg.id, true, true);
   }
@@ -335,7 +384,7 @@
         colorIndex: r.isYou ? 0 : (i % 4),
         team: r.isYou ? 0 : 1,
         classId: r.classId || "warrior",
-        appearance: r.isYou ? appearance : { skin: "#f5d0b0", hair: "#5d4037", cloth: "#2980b9" }
+        appearance: r.isYou ? appearance : { skin: "#f5d0a9", hair: "#5d4037", cloth: "#2980b9" }
       });
     }
     Network.startGame({ playerConfigs: configs });
