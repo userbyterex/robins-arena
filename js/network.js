@@ -1,8 +1,7 @@
 /**
- * network.js — P2P multiplayer via PeerJS.
- * Hosts register in localStorage for "camp discovery".
+ * network.js — P2P multiplayer via PeerJS (fixed + viral-ready).
+ * Host ID is deterministic: "ra-host-" + CODE
  */
-
 var Network = (function () {
   var peer = null;
   var connections = [];
@@ -10,12 +9,15 @@ var Network = (function () {
   var isHost = false;
   var msgHandlers = {};
   var localName = "";
+  var localClassId = "warrior";
+  var localAppearance = null;
   var onPlayerJoinCb = null;
   var onPlayerLeaveCb = null;
   var onStartCb = null;
   var onErrorCb = null;
   var onCloseCb = null;
   var hostConn = null;
+  var rosterMap = {}; // peerId -> { id, name, classId, appearance }
 
   function generateCode() {
     var chars = "ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -35,25 +37,42 @@ var Network = (function () {
 
   function broadcast(msg) {
     for (var i = 0; i < connections.length; i++) {
-      try { connections[i].send(msg); } catch (e) {}
+      try {
+        if (connections[i].open) connections[i].send(msg);
+      } catch (e) {}
     }
   }
 
   function handleMessage(data, fromId) {
     if (!data || !data.type) return;
+
+    if (data.type === "hello" && isHost) {
+      var name = data.name || "Hunter";
+      var classId = data.classId || "warrior";
+      var appearance = data.appearance || null;
+      rosterMap[fromId] = {
+        id: fromId,
+        name: name,
+        classId: classId,
+        appearance: appearance
+      };
+      if (onPlayerJoinCb) onPlayerJoinCb(fromId, name, classId, appearance);
+      return;
+    }
+
     if (msgHandlers[data.type]) {
       msgHandlers[data.type](data, fromId);
-    }
-    if (data.type === "snapshot" && !isHost) {
-      if (msgHandlers["snapshot"]) msgHandlers["snapshot"](data, fromId);
     }
   }
 
   function addConnection(conn) {
     connections.push(conn);
-    conn.on("data", function (data) { handleMessage(data, conn.peer); });
+    conn.on("data", function (data) {
+      handleMessage(data, conn.peer);
+    });
     conn.on("close", function () {
       connections = connections.filter(function (c) { return c !== conn; });
+      if (rosterMap[conn.peer]) delete rosterMap[conn.peer];
       if (onPlayerLeaveCb) onPlayerLeaveCb(conn.peer);
     });
     conn.on("error", function (err) {
@@ -61,9 +80,11 @@ var Network = (function () {
     });
   }
 
-  function hostRoom(name, callbacks) {
+  function hostRoom(name, callbacks, classId, appearance) {
     isHost = true;
     localName = name;
+    localClassId = classId || "warrior";
+    localAppearance = appearance || null;
     roomCode = generateCode();
     callbacks = callbacks || {};
     onPlayerJoinCb = callbacks.onPlayerJoin || null;
@@ -71,20 +92,28 @@ var Network = (function () {
     onStartCb = callbacks.onStart || null;
     onErrorCb = callbacks.onError || null;
     onCloseCb = callbacks.onClose || null;
+    rosterMap = {};
 
     try {
-      peer = new Peer("ra-host-" + roomCode + "-" + Date.now(), {
+      // Deterministic ID so clients can find the host
+      peer = new Peer("ra-host-" + roomCode, {
         host: "0.peerjs.com",
         port: 443,
         secure: true,
-        config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" }
+          ]
+        }
       });
     } catch (e) {
       if (onErrorCb) onErrorCb(e);
       return;
     }
 
-    peer.on("open", function () {
+    peer.on("open", function (id) {
+      console.log("Host ready:", id);
       try {
         localStorage.setItem("ra-camp-" + roomCode, JSON.stringify({
           code: roomCode,
@@ -97,12 +126,19 @@ var Network = (function () {
     peer.on("connection", function (conn) {
       addConnection(conn);
       conn.on("open", function () {
-        if (onPlayerJoinCb) onPlayerJoinCb(conn.peer, conn.metadata && conn.metadata.name ? conn.metadata.name : "Hunter");
+        // Wait for "hello" message with full player data
       });
     });
 
     peer.on("error", function (err) {
-      if (onErrorCb) onErrorCb(err);
+      console.error("Peer error:", err);
+      if (err.type === "unavailable-id") {
+        // Code already taken → generate new one
+        roomCode = generateCode();
+        if (onErrorCb) onErrorCb(new Error("Code taken, try again"));
+      } else if (onErrorCb) {
+        onErrorCb(err);
+      }
     });
 
     peer.on("disconnected", function () {
@@ -110,21 +146,28 @@ var Network = (function () {
     });
   }
 
-  function joinRoom(code, name, callbacks) {
+  function joinRoom(code, name, callbacks, classId, appearance) {
     isHost = false;
     localName = name;
-    roomCode = code.toUpperCase();
+    localClassId = classId || "warrior";
+    localAppearance = appearance || null;
+    roomCode = code.toUpperCase().trim();
     callbacks = callbacks || {};
     onStartCb = callbacks.onStart || null;
     onErrorCb = callbacks.onError || null;
     onCloseCb = callbacks.onClose || null;
 
     try {
-      peer = new Peer("ra-client-" + Date.now(), {
+      peer = new Peer("ra-client-" + Date.now() + "-" + Math.floor(Math.random() * 9999), {
         host: "0.peerjs.com",
         port: 443,
         secure: true,
-        config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" }
+          ]
+        }
       });
     } catch (e) {
       if (onErrorCb) onErrorCb(e);
@@ -133,18 +176,31 @@ var Network = (function () {
 
     peer.on("open", function () {
       var hostId = "ra-host-" + roomCode;
-      var conn = peer.connect(hostId, { metadata: { name: name } });
+      var conn = peer.connect(hostId, {
+        metadata: { name: name },
+        reliable: true
+      });
       hostConn = conn;
+
       conn.on("open", function () {
         addConnection(conn);
-        conn.send({ type: "hello", name: name });
+        // Send full player info
+        conn.send({
+          type: "hello",
+          name: name,
+          classId: localClassId,
+          appearance: localAppearance
+        });
       });
+
       conn.on("data", function (data) {
         handleMessage(data, conn.peer);
       });
+
       conn.on("close", function () {
         if (onCloseCb) onCloseCb();
       });
+
       conn.on("error", function (err) {
         if (onErrorCb) onErrorCb(err);
       });
@@ -156,10 +212,6 @@ var Network = (function () {
 
     onMessage("start_game", function (msg) {
       if (onStartCb) onStartCb(msg.payload || {});
-    });
-
-    onMessage("roster_update", function (msg) {
-      if (msgHandlers["roster_update"]) msgHandlers["roster_update"](msg);
     });
   }
 
@@ -189,13 +241,18 @@ var Network = (function () {
     try {
       if (roomCode) localStorage.removeItem("ra-camp-" + roomCode);
     } catch (e) {}
-    connections.forEach(function (c) { try { c.close(); } catch (e) {} });
+    connections.forEach(function (c) {
+      try { c.close(); } catch (e) {}
+    });
     connections = [];
-    if (peer) { try { peer.destroy(); } catch (e) {} }
+    if (peer) {
+      try { peer.destroy(); } catch (e) {}
+    }
     peer = null;
     roomCode = null;
     isHost = false;
     hostConn = null;
+    rosterMap = {};
   }
 
   function send(msg) {
@@ -210,6 +267,10 @@ var Network = (function () {
     msgHandlers[type] = handler;
   }
 
+  function getRosterMap() {
+    return rosterMap;
+  }
+
   return {
     hostRoom: hostRoom,
     joinRoom: joinRoom,
@@ -219,6 +280,7 @@ var Network = (function () {
     send: send,
     onMessage: onMessage,
     getMyId: getMyId,
-    getRoomCode: getRoomCode
+    getRoomCode: getRoomCode,
+    getRosterMap: getRosterMap
   };
 })();
