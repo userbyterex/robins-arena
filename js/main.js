@@ -1,6 +1,5 @@
 /**
- * main.js — Entry point, lobby flow, game lifecycle.
- * Scroll-safe: body.playing only during match.
+ * main.js — Lobby + launchGame completo (con debug en pantalla).
  */
 (function () {
   "use strict";
@@ -15,6 +14,22 @@
   var gameRunning = false;
 
   function $(id) { return document.getElementById(id); }
+
+  function showDebug(msg) {
+    var d = document.getElementById("ra-debug");
+    if (!d) {
+      d = document.createElement("div");
+      d.id = "ra-debug";
+      d.style.cssText = "position:fixed;left:6px;right:6px;bottom:6px;z-index:99999;background:rgba(0,0,0,0.85);color:#c9a227;font:12px monospace;padding:8px;max-height:45%;overflow:auto;border:1px solid #c9a227;border-radius:6px;pointer-events:none;";
+      document.body.appendChild(d);
+    }
+    d.textContent = (d.textContent ? d.textContent + "\n" : "") + String(msg);
+    console.log("[RA]", msg);
+  }
+
+  window.addEventListener("error", function (e) {
+    showDebug("ERROR: " + (e.message || e));
+  });
 
   function showPanel(id) {
     ["panel-setup", "panel-join", "panel-lobby"].forEach(function (pid) {
@@ -40,7 +55,8 @@
       var box = $("char-preview");
       if (box) {
         var cvs = document.createElement("canvas");
-        cvs.width = 64; cvs.height = 64;
+        cvs.width = 64;
+        cvs.height = 64;
         var ctx = cvs.getContext("2d");
         ctx.fillStyle = "#c0392b";
         ctx.fillRect(16, 16, 32, 32);
@@ -75,9 +91,7 @@
         });
         row.appendChild(btn);
       });
-      if (list.length && !appearance[cat.key]) {
-        appearance[cat.key] = list[0];
-      }
+      if (list.length && !appearance[cat.key]) appearance[cat.key] = list[0];
     });
     updatePreview();
   }
@@ -91,7 +105,8 @@
       var cvs = PixelCharacter.generate(selectedClass, appearance);
       if (cvs) {
         var display = document.createElement("canvas");
-        display.width = 64; display.height = 64;
+        display.width = 64;
+        display.height = 64;
         var dctx = display.getContext("2d");
         dctx.imageSmoothingEnabled = false;
         dctx.drawImage(cvs, 0, 0, 64, 64);
@@ -100,17 +115,17 @@
       }
     }
 
-    var cvs = document.createElement("canvas");
-    cvs.width = 64; cvs.height = 64;
-    var ctx = cvs.getContext("2d");
-    ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = appearance.cloth || "#c0392b";
-    ctx.fillRect(20, 28, 24, 20);
-    ctx.fillStyle = appearance.skin || "#f5d0a9";
-    ctx.fillRect(24, 12, 16, 16);
-    ctx.fillStyle = appearance.hair || "#5d4037";
-    ctx.fillRect(22, 8, 20, 8);
-    box.appendChild(cvs);
+    var cvs2 = document.createElement("canvas");
+    cvs2.width = 64;
+    cvs2.height = 64;
+    var ctx2 = cvs2.getContext("2d");
+    ctx2.fillStyle = appearance.cloth || "#c0392b";
+    ctx2.fillRect(20, 28, 24, 20);
+    ctx2.fillStyle = appearance.skin || "#f5d0a9";
+    ctx2.fillRect(24, 12, 16, 16);
+    ctx2.fillStyle = appearance.hair || "#5d4037";
+    ctx2.fillRect(22, 8, 20, 8);
+    box.appendChild(cvs2);
   }
 
   function initClassPicker() {
@@ -125,12 +140,8 @@
       });
       card.classList.add("selected");
       card.setAttribute("aria-pressed", "true");
-      selectedClass = card.getAttribute("data-class");
+      selectedClass = card.getAttribute("data-class") || "warrior";
       updatePreview();
-      if (typeof AudioFX !== "undefined") {
-        AudioFX.resume();
-        AudioFX.beep({ freq: 600, duration: 0.06, type: "sine", volume: 0.08 });
-      }
     });
   }
 
@@ -218,25 +229,14 @@
     var count = seconds;
     function tick() {
       if (count > 0) {
-        numEl.textContent = count;
+        numEl.textContent = String(count);
         overlay.classList.remove("hidden");
-        numEl.style.animation = "none";
-        numEl.offsetHeight;
-        numEl.style.animation = "";
-        if (typeof AudioFX !== "undefined") {
-          AudioFX.beep({ freq: 800 - count * 100, duration: 0.15, type: "square", volume: 0.12 });
-        }
         count--;
         setTimeout(tick, 800);
       } else {
         numEl.textContent = "HUNT!";
-        numEl.style.fontSize = "60px";
-        if (typeof AudioFX !== "undefined") {
-          AudioFX.beep({ freq: 1200, duration: 0.3, type: "sawtooth", volume: 0.15 });
-        }
         setTimeout(function () {
           overlay.classList.add("hidden");
-          numEl.style.fontSize = "";
           if (onDone) onDone();
         }, 600);
       }
@@ -244,10 +244,17 @@
     tick();
   }
 
+  /**
+   * launchGame — arranca partida (solo / host / join)
+   */
   function launchGame(configs, myId, asHost, asSolo) {
-    if (gameRunning) return;
-    gameRunning = true;
+    showDebug("launchGame start host=" + asHost + " solo=" + asSolo + " id=" + myId);
 
+    if (gameRunning) {
+      showDebug("already running");
+      return;
+    }
+    gameRunning = true;
     document.body.classList.add("playing");
 
     var lobby = document.getElementById("lobby-screen");
@@ -256,28 +263,62 @@
     if (game) game.classList.remove("hidden");
 
     var canvas = $("game-canvas");
-    if (canvas) {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+    if (!canvas) {
+      showDebug("NO canvas #game-canvas");
+      gameRunning = false;
+      return;
     }
 
-    Game.init({
-      canvas: canvas,
-      localPlayerId: myId,
-      isHost: asHost,
-      isSolo: asSolo,
-      playerConfigs: configs
-    });
+    canvas.width = window.innerWidth || 960;
+    canvas.height = window.innerHeight || 640;
+    showDebug("canvas " + canvas.width + "x" + canvas.height);
 
-    if (typeof InputManager !== "undefined") {
-      InputManager.init(canvas, function (input) {
-        Game.setInput(input);
+    showDebug("GameMap=" + (typeof GameMap) + " HostSim=" + (typeof HostSim) + " Game=" + (typeof Game));
+
+    if (typeof Game === "undefined" || !Game.init) {
+      showDebug("FATAL: Game module missing — check js/game.js");
+      gameRunning = false;
+      return;
+    }
+    if (typeof HostSim === "undefined" || !HostSim.init) {
+      showDebug("FATAL: HostSim missing — check js/host-sim.js");
+      gameRunning = false;
+      return;
+    }
+    if (typeof GameMap === "undefined") {
+      showDebug("WARN: GameMap missing — check js/engine/map.js");
+    }
+
+    try {
+      Game.init({
+        canvas: canvas,
+        localPlayerId: myId,
+        isHost: asHost,
+        isSolo: asSolo,
+        playerConfigs: configs || []
       });
+      showDebug("Game.init OK configs=" + ((configs && configs.length) || 0));
+    } catch (err) {
+      showDebug("Game.init ERROR: " + (err && err.message ? err.message : err));
+      gameRunning = false;
+      return;
     }
 
-    if (typeof TouchControls !== "undefined") TouchControls.init();
+    if (typeof InputManager !== "undefined" && InputManager.init) {
+      InputManager.init(canvas, function (input) {
+        if (typeof Game !== "undefined" && Game.setInput) Game.setInput(input);
+      });
+      showDebug("InputManager OK");
+    } else {
+      showDebug("WARN: InputManager missing");
+    }
 
-    if (typeof WeaponBar !== "undefined" && $("weapon-bar")) {
+    if (typeof TouchControls !== "undefined" && TouchControls.init) {
+      try { TouchControls.init(); showDebug("TouchControls OK"); }
+      catch (e) { showDebug("TouchControls err: " + e.message); }
+    }
+
+    if (typeof WeaponBar !== "undefined" && $("weapon-bar") && WeaponBar.init) {
       WeaponBar.init($("weapon-bar"), function (weaponId) {
         if (typeof InputManager !== "undefined" && InputManager.setWeapon) {
           InputManager.setWeapon(weaponId);
@@ -286,19 +327,23 @@
     }
 
     if (typeof AudioFX !== "undefined") {
-      AudioFX.resume();
-      AudioFX.startBattleMusic();
+      try {
+        if (AudioFX.resume) AudioFX.resume();
+        if (AudioFX.startBattleMusic) AudioFX.startBattleMusic();
+      } catch (e) {}
     }
 
-    runCountdown(3, function () {});
+    runCountdown(3, function () {
+      showDebug("countdown done — play!");
+    });
   }
 
   function backToLobby() {
     if (gameRunning) {
-      if (typeof Game !== "undefined") Game.stop();
+      if (typeof Game !== "undefined" && Game.stop) Game.stop();
       gameRunning = false;
     }
-    if (typeof Network !== "undefined") Network.leaveRoom();
+    if (typeof Network !== "undefined" && Network.leaveRoom) Network.leaveRoom();
     roster = [];
     isHost = false;
     isSolo = false;
@@ -312,9 +357,14 @@
     if (lobby) lobby.classList.remove("hidden");
     showPanel("panel-setup");
 
+    var dbg = document.getElementById("ra-debug");
+    if (dbg) dbg.remove();
+
     if (typeof AudioFX !== "undefined") {
-      AudioFX.stopBattleMusic();
-      AudioFX.startLobbyMusic();
+      try {
+        if (AudioFX.stopBattleMusic) AudioFX.stopBattleMusic();
+        if (AudioFX.startLobbyMusic) AudioFX.startLobbyMusic();
+      } catch (e) {}
     }
 
     var btn = $("btn-start-game");
@@ -324,6 +374,7 @@
   }
 
   function startSolo() {
+    showDebug("startSolo");
     isSolo = true;
     isHost = true;
     var cfg = buildLocalConfig();
@@ -345,13 +396,15 @@
     localPlayerConfig = cfg;
     roster = [{ id: cfg.id, name: cfg.name, classId: cfg.classId, isYou: true, appearance: cfg.appearance }];
 
+    if (typeof Network === "undefined" || !Network.hostRoom) {
+      alert("Network missing");
+      return;
+    }
+
     Network.hostRoom(cfg.name, {
       onPlayerJoin: function (peerId, peerName, classId, appearanceData) {
         addToRoster(peerId, peerName, classId || "warrior", false, appearanceData);
         Network.send({ type: "roster_update", roster: roster });
-        if (typeof AudioFX !== "undefined") {
-          AudioFX.beep({ freq: 520, duration: 0.12, type: "sine", volume: 0.1 });
-        }
       },
       onPlayerLeave: function (peerId) {
         removeFromRoster(peerId);
@@ -373,7 +426,6 @@
     if ($("lobby-status")) $("lobby-status").textContent = "Share the code! Waiting for hunters…";
     if ($("btn-start-game")) $("btn-start-game").classList.remove("hidden");
     showPanel("panel-lobby");
-    if (typeof AudioFX !== "undefined") AudioFX.startLobbyMusic();
   }
 
   function openJoinPanel() {
@@ -386,9 +438,11 @@
     if (!list) return;
     list.innerHTML = "";
     var camps = [];
-    try { camps = Network.listOpenCamps(); } catch (e) {}
+    try {
+      if (typeof Network !== "undefined" && Network.listOpenCamps) camps = Network.listOpenCamps();
+    } catch (e) {}
     if (!camps || !camps.length) {
-      list.innerHTML = '<li class="empty">No camps found on this device.<br>Ask your friend for the 4-letter code!</li>';
+      list.innerHTML = '<li class="empty">No camps found. Ask for the 4-letter code!</li>';
       return;
     }
     camps.forEach(function (camp) {
@@ -415,35 +469,42 @@
     var cfg = buildLocalConfig();
     localPlayerConfig = cfg;
 
+    if (typeof Network === "undefined" || !Network.joinRoom) {
+      if (errEl) errEl.textContent = "Network missing";
+      return;
+    }
+
     Network.joinRoom(code, cfg.name, {
       onStart: function (payload) {
         var allConfigs = payload.playerConfigs || [cfg];
         launchGame(allConfigs, cfg.id, false, false);
       },
       onError: function (err) {
-        if (errEl) errEl.textContent = (err.message || "Could not join. Wrong code or camp closed.");
+        if (errEl) errEl.textContent = (err.message || "Could not join.");
       },
       onClose: function () { backToLobby(); }
     }, cfg.classId, cfg.appearance);
 
-    Network.onMessage("roster_update", function (msg) {
-      if (msg.roster) {
-        roster = msg.roster.map(function (r) {
-          return {
-            id: r.id,
-            name: r.name,
-            classId: r.classId || "warrior",
-            isYou: r.id === cfg.id,
-            appearance: r.appearance || null
-          };
-        });
-        updateRosterUI();
-      }
-    });
+    if (Network.onMessage) {
+      Network.onMessage("roster_update", function (msg) {
+        if (msg.roster) {
+          roster = msg.roster.map(function (r) {
+            return {
+              id: r.id,
+              name: r.name,
+              classId: r.classId || "warrior",
+              isYou: r.id === cfg.id,
+              appearance: r.appearance || null
+            };
+          });
+          updateRosterUI();
+        }
+      });
+    }
 
     roomCode = code;
     if ($("room-code-display")) $("room-code-display").textContent = code;
-    if ($("lobby-status")) $("lobby-status").textContent = "Connected! Waiting for host to start…";
+    if ($("lobby-status")) $("lobby-status").textContent = "Connected! Waiting for host…";
     if ($("btn-start-game")) $("btn-start-game").classList.add("hidden");
     roster = [{ id: cfg.id, name: cfg.name, classId: cfg.classId, isYou: true, appearance: cfg.appearance }];
     updateRosterUI();
@@ -451,9 +512,7 @@
   }
 
   function hostStartGame() {
-    if (!isHost) return;
-    if (roster.length < 2) return;
-
+    if (!isHost || roster.length < 2) return;
     var configs = [];
     for (var i = 0; i < roster.length; i++) {
       var r = roster[i];
@@ -466,24 +525,16 @@
         appearance: r.appearance || { skin: "#f5d0a9", hair: "#5d4037", cloth: "#2980b9" }
       });
     }
-    Network.startGame({ playerConfigs: configs });
+    if (typeof Network !== "undefined" && Network.startGame) {
+      Network.startGame({ playerConfigs: configs });
+    }
   }
 
   function copyCode() {
     var code = $("room-code-display") ? $("room-code-display").textContent : "";
     if (!code || code === "----") return;
-
-    var shareText = "Join my Robin's Arena camp! Code: " + code + "\nPlay free → " + (window.location.href || "");
-
     try {
-      navigator.clipboard.writeText(code).then(function () {
-        var btn = $("btn-copy-code");
-        if (btn) {
-          var old = btn.textContent;
-          btn.textContent = "✅ Copied!";
-          setTimeout(function () { btn.textContent = old; }, 1500);
-        }
-      });
+      navigator.clipboard.writeText(code);
     } catch (e) {
       var ta = document.createElement("textarea");
       ta.value = code;
@@ -492,13 +543,6 @@
       document.execCommand("copy");
       document.body.removeChild(ta);
     }
-
-    if (navigator.share) {
-      navigator.share({
-        title: "Robin's Arena",
-        text: shareText
-      }).catch(function () {});
-    }
   }
 
   function onResize() {
@@ -506,7 +550,9 @@
     if (canvas && gameRunning) {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      if (typeof Camera !== "undefined") Camera.setViewport(canvas.width, canvas.height);
+      if (typeof Camera !== "undefined" && Camera.setViewport) {
+        Camera.setViewport(canvas.width, canvas.height);
+      }
     }
   }
 
@@ -515,6 +561,9 @@
   }
 
   window.addEventListener("DOMContentLoaded", function () {
+    showDebug("main.js loaded");
+    showDebug("GameMap=" + typeof GameMap + " HostSim=" + typeof HostSim + " Game=" + typeof Game);
+
     initCharacterCreator();
     initClassPicker();
 
@@ -536,16 +585,5 @@
       var names = ["Robin", "Marian", "Tuck", "Scarlet", "Will", "Allan", "Much", "John"];
       nameInput.value = names[Math.floor(Math.random() * names.length)];
     }
-
-    if (typeof AudioFX !== "undefined") AudioFX.startLobbyMusic();
-  });
-  // DEBUG overlay — quitar cuando funcione
-  window.__RA_DEBUG = true;
-  window.addEventListener("error", function (e) {
-    var d = document.getElementById("ra-debug") || document.createElement("div");
-    d.id = "ra-debug";
-    d.style.cssText = "position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;background:#000c;color:#f55;font:12px monospace;padding:8px;max-height:40%;overflow:auto;";
-    d.textContent = (d.textContent || "") + "\n" + (e.message || e);
-    document.body.appendChild(d);
   });
 })();
