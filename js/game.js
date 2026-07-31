@@ -301,15 +301,25 @@ var Game = (function () {
   }
 
   function render() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!canvas || !ctx) return;
+
+    // Always paint a visible ground (never pure empty CSS green)
+    ctx.fillStyle = "#2d4a30";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
     var localPlayer = getLocalPlayer();
 
+    // If no local player yet, center near camp spawn
     if (localPlayer && localPlayer.alive) {
       var targetX = localPlayer.x - Camera.viewW / 2;
       var targetY = localPlayer.y - Camera.viewH / 2;
-      smoothCam.x += (targetX - smoothCam.x) * 0.08;
-      smoothCam.y += (targetY - smoothCam.y) * 0.08;
+      smoothCam.x += (targetX - smoothCam.x) * 0.12;
+      smoothCam.y += (targetY - smoothCam.y) * 0.12;
       Camera.follow(smoothCam.x + Camera.viewW / 2, smoothCam.y + Camera.viewH / 2);
+    } else if (localPlayer) {
+      Camera.follow(localPlayer.x, localPlayer.y);
+    } else {
+      Camera.follow(400, 500);
     }
 
     var cx = Camera.x;
@@ -318,60 +328,89 @@ var Game = (function () {
     var vh = Camera.viewH;
 
     ctx.save();
-    ctx.translate(shake.x, shake.y);
+    ctx.translate(shake.x || 0, shake.y || 0);
 
-    if (typeof GameMap !== "undefined" && GameMap.draw) {
-      GameMap.draw(ctx, cx, cy, vw, vh, { flags: state.flags });
-    }
-
-    if (state.projectiles) {
-      for (var i = 0; i < state.projectiles.length; i++) {
-        var proj = state.projectiles[i];
-        var ps = Camera.worldToScreen(proj.x, proj.y);
-        if (typeof drawProjectile === "function") { drawProjectile(ctx, ps.x, ps.y, proj); }
+    try {
+      if (typeof GameMap !== "undefined" && typeof GameMap.draw === "function") {
+        GameMap.draw(ctx, cx, cy, vw, vh, { flags: state.flags });
+      } else {
+        // Fallback grid so we never see blank green
+        ctx.fillStyle = "#355c3a";
+        ctx.fillRect(0, 0, vw, vh);
+        ctx.strokeStyle = "rgba(0,0,0,0.15)";
+        ctx.lineWidth = 1;
+        for (var gx = -((cx % 64)); gx < vw; gx += 64) {
+          ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, vh); ctx.stroke();
+        }
+        for (var gy = -((cy % 64)); gy < vh; gy += 64) {
+          ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(vw, gy); ctx.stroke();
+        }
+        ctx.fillStyle = "#e8dcc0";
+        ctx.font = "16px monospace";
+        ctx.fillText("MAP MISSING — check js/engine/map.js", 20, 40);
       }
+    } catch (err) {
+      console.error("Map draw error:", err);
+      ctx.fillStyle = "#c0392b";
+      ctx.font = "14px monospace";
+      ctx.fillText("Map error: " + (err && err.message ? err.message : err), 20, 40);
     }
 
-    if (state.npcs) {
-      for (var n = 0; n < state.npcs.length; n++) {
-        var npc = state.npcs[n];
-        if (!npc.alive) continue;
-        var ns = Camera.worldToScreen(npc.x, npc.y);
-        drawNpc(ctx, ns.x, ns.y, npc);
+    try {
+      if (state.projectiles) {
+        for (var i = 0; i < state.projectiles.length; i++) {
+          var proj = state.projectiles[i];
+          var ps = Camera.worldToScreen(proj.x, proj.y);
+          if (typeof drawProjectile === "function") drawProjectile(ctx, ps.x, ps.y, proj);
+        }
       }
-    }
 
-    if (state.players) {
-      for (var p = 0; p < state.players.length; p++) {
-        var pl = state.players[p];
-        if (!pl.alive) continue;
-        var ps2 = Camera.worldToScreen(pl.x, pl.y);
-        if (typeof drawPlayer === "function") { drawPlayer(ctx, ps2.x, ps2.y, pl); }
+      if (state.npcs) {
+        for (var n = 0; n < state.npcs.length; n++) {
+          var npc = state.npcs[n];
+          if (!npc.alive) continue;
+          var ns = Camera.worldToScreen(npc.x, npc.y);
+          drawNpc(ctx, ns.x, ns.y, npc);
+        }
       }
+
+      if (state.players) {
+        for (var p = 0; p < state.players.length; p++) {
+          var pl = state.players[p];
+          if (!pl.alive) continue;
+          var ps2 = Camera.worldToScreen(pl.x, pl.y);
+          if (typeof drawPlayer === "function") drawPlayer(ctx, ps2.x, ps2.y, pl);
+        }
+      }
+
+      drawLightFlashes(ctx);
+      if (typeof Particles !== "undefined" && Particles.draw) {
+        Particles.draw(ctx, Camera.worldToScreen);
+      }
+      drawFloatingTexts(ctx);
+    } catch (err2) {
+      console.error("Entity draw error:", err2);
     }
 
-    drawLightFlashes(ctx);
-
-    if (typeof Particles !== "undefined" && Particles.draw) {
-      Particles.draw(ctx, Camera.worldToScreen);
-    }
-
-    drawFloatingTexts(ctx);
     ctx.restore();
 
-    if (typeof HUD !== "undefined" && HUD.draw) {
-      HUD.draw(ctx, {
-        localPlayer: localPlayer,
-        players: state.players,
-        npcs: state.npcs,
-        killfeed: state.killfeed,
-        timeLeft: state.timeLeft,
-        matchOver: state.matchOver,
-        winnerName: state.winnerName,
-        camera: Camera,
-        canvasWidth: canvas.width,
-        canvasHeight: canvas.height
-      });
+    try {
+      if (typeof HUD !== "undefined" && HUD.draw) {
+        HUD.draw(ctx, {
+          localPlayer: localPlayer,
+          players: state.players,
+          npcs: state.npcs,
+          killfeed: state.killfeed,
+          timeLeft: state.timeLeft,
+          matchOver: state.matchOver,
+          winnerName: state.winnerName,
+          camera: Camera,
+          canvasWidth: canvas.width,
+          canvasHeight: canvas.height
+        });
+      }
+    } catch (err3) {
+      console.error("HUD error:", err3);
     }
   }
 
