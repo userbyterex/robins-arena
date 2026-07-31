@@ -1,110 +1,108 @@
 /**
- * engine/map.js — Sherwood conquest map (complete, self-contained).
+ * engine/map.js — Compact rectangular Sherwood arena (1600×900).
+ * With integration logging.
  */
 var GameMap = (function () {
-  var WIDTH = 3000;
-  var HEIGHT = 1000;
+  console.log("[GameMap] loading…");
+
+  var WIDTH = 1600;
+  var HEIGHT = 900;
 
   var SPAWNS = [
-    { x: 200, y: 300, team: 0 },
-    { x: 2800, y: 300, team: 1 },
-    { x: 200, y: 700, team: 0 },
-    { x: 2800, y: 700, team: 1 }
+    { x: 120, y: 280, team: 0 },
+    { x: 1480, y: 280, team: 1 },
+    { x: 120, y: 620, team: 0 },
+    { x: 1480, y: 620, team: 1 }
   ];
 
   var FLAGS = [
-    { id: "camp_hq", name: "Camp HQ", x: 150, y: 500, radius: 60, team: 0 },
-    { id: "castle_hq", name: "Castle HQ", x: 2850, y: 500, radius: 60, team: 1 },
-    { id: "nymphs", name: "Nymphs", x: 1000, y: 300, radius: 55, team: -1 },
-    { id: "village", name: "Village", x: 1500, y: 500, radius: 55, team: -1 },
-    { id: "outpost", name: "Outpost", x: 2000, y: 700, radius: 55, team: -1 }
+    { id: "camp_hq", name: "Camp HQ", x: 100, y: 450, radius: 48, team: 0 },
+    { id: "castle_hq", name: "Castle HQ", x: 1500, y: 450, radius: 48, team: 1 },
+    { id: "nymphs", name: "Nymphs", x: 520, y: 280, radius: 44, team: -1 },
+    { id: "village", name: "Village", x: 800, y: 450, radius: 48, team: -1 },
+    { id: "outpost", name: "Outpost", x: 1080, y: 620, radius: 44, team: -1 }
   ];
 
   var TOWERS = [
-    { id: "t1", x: 400, y: 500, range: 180, damage: 12, cooldown: 1.2, team: 0 },
-    { id: "t2", x: 2600, y: 500, range: 180, damage: 12, cooldown: 1.2, team: 1 }
+    { id: "t1", x: 260, y: 450, range: 150, damage: 12, cooldown: 1.2, team: 0 },
+    { id: "t2", x: 1340, y: 450, range: 150, damage: 12, cooldown: 1.2, team: 1 }
   ];
 
-  // Simple obstacles
   var OBSTACLES = [];
   (function buildObstacles() {
-    var i, x, y;
-    // Trees left forest
-    for (i = 0; i < 18; i++) {
+    var i;
+    for (i = 0; i < 12; i++) {
       OBSTACLES.push({
         type: "tree",
-        x: 80 + (i % 6) * 90 + Math.random() * 20,
-        y: 80 + Math.floor(i / 6) * 280 + Math.random() * 40,
-        w: 36, h: 36
+        x: 40 + (i % 4) * 55,
+        y: 60 + Math.floor(i / 4) * 280,
+        w: 32, h: 32
       });
     }
-    // Trees right
-    for (i = 0; i < 18; i++) {
+    for (i = 0; i < 12; i++) {
       OBSTACLES.push({
         type: "tree",
-        x: 2400 + (i % 6) * 90,
-        y: 80 + Math.floor(i / 6) * 280,
-        w: 36, h: 36
+        x: 1380 + (i % 4) * 50,
+        y: 60 + Math.floor(i / 4) * 280,
+        w: 32, h: 32
       });
     }
-    // Rocks mid
-    for (i = 0; i < 10; i++) {
-      OBSTACLES.push({
-        type: "rock",
-        x: 700 + i * 160,
-        y: 120 + (i % 2) * 700,
-        w: 40, h: 32
-      });
-    }
-    // Crates / barrels near zones
-    var spots = [
-      [950, 400], [1050, 250], [1480, 420], [1550, 580],
-      [1950, 650], [2050, 750], [600, 500], [2400, 500]
+    var rocks = [
+      [400, 120], [700, 100], [1000, 130],
+      [450, 780], [750, 800], [1050, 770],
+      [650, 450], [950, 420]
     ];
-    for (i = 0; i < spots.length; i++) {
+    for (i = 0; i < rocks.length; i++) {
+      OBSTACLES.push({ type: "rock", x: rocks[i][0], y: rocks[i][1], w: 36, h: 28 });
+    }
+    var props = [
+      [480, 350], [560, 240], [760, 380], [840, 520],
+      [1040, 560], [1120, 680], [300, 450], [1280, 450]
+    ];
+    for (i = 0; i < props.length; i++) {
       OBSTACLES.push({
         type: i % 2 ? "crate" : "barrel",
-        x: spots[i][0], y: spots[i][1],
-        w: 28, h: 28
+        x: props[i][0], y: props[i][1],
+        w: 24, h: 24
       });
     }
-    // Walls near HQs
-    OBSTACLES.push({ type: "wall", x: 300, y: 420, w: 80, h: 20 });
-    OBSTACLES.push({ type: "wall", x: 300, y: 560, w: 80, h: 20 });
-    OBSTACLES.push({ type: "wall", x: 2620, y: 420, w: 80, h: 20 });
-    OBSTACLES.push({ type: "wall", x: 2620, y: 560, w: 80, h: 20 });
+    OBSTACLES.push({ type: "wall", x: 180, y: 380, w: 70, h: 16 });
+    OBSTACLES.push({ type: "wall", x: 180, y: 500, w: 70, h: 16 });
+    OBSTACLES.push({ type: "wall", x: 1350, y: 380, w: 70, h: 16 });
+    OBSTACLES.push({ type: "wall", x: 1350, y: 500, w: 70, h: 16 });
+    console.log("[GameMap] obstacles:", OBSTACLES.length);
   })();
 
-  // Floor cache
   var floorCanvas = document.createElement("canvas");
   floorCanvas.width = WIDTH;
   floorCanvas.height = HEIGHT;
   (function paintFloor() {
     var fctx = floorCanvas.getContext("2d");
-    // Base grass
+    if (!fctx) {
+      console.error("[GameMap] no 2d context for floor");
+      return;
+    }
     fctx.fillStyle = "#2d4a30";
     fctx.fillRect(0, 0, WIDTH, HEIGHT);
-    // Noise patches
     var i;
-    for (i = 0; i < 400; i++) {
-      fctx.fillStyle = i % 2 ? "rgba(45,90,50,0.35)" : "rgba(30,60,35,0.3)";
+    for (i = 0; i < 280; i++) {
+      fctx.fillStyle = i % 2 ? "rgba(45,90,50,0.35)" : "rgba(30,60,35,0.28)";
       fctx.beginPath();
-      fctx.arc(Math.random() * WIDTH, Math.random() * HEIGHT, 20 + Math.random() * 50, 0, Math.PI * 2);
+      fctx.arc(Math.random() * WIDTH, Math.random() * HEIGHT, 16 + Math.random() * 40, 0, Math.PI * 2);
       fctx.fill();
     }
-    // Paths
-    fctx.strokeStyle = "rgba(90,70,40,0.25)";
-    fctx.lineWidth = 40;
+    fctx.strokeStyle = "rgba(90,70,40,0.28)";
+    fctx.lineWidth = 36;
     fctx.beginPath();
-    fctx.moveTo(150, 500);
-    fctx.quadraticCurveTo(1000, 400, 1500, 500);
-    fctx.quadraticCurveTo(2000, 600, 2850, 500);
+    fctx.moveTo(100, 450);
+    fctx.quadraticCurveTo(520, 320, 800, 450);
+    fctx.quadraticCurveTo(1080, 580, 1500, 450);
     fctx.stroke();
-    // Team tint
-    fctx.fillStyle = "rgba(61,158,88,0.08)";
-    fctx.fillRect(0, 0, 500, HEIGHT);
-    fctx.fillStyle = "rgba(90,140,200,0.08)";
-    fctx.fillRect(WIDTH - 500, 0, 500, HEIGHT);
+    fctx.fillStyle = "rgba(61,158,88,0.1)";
+    fctx.fillRect(0, 0, 280, HEIGHT);
+    fctx.fillStyle = "rgba(90,140,200,0.1)";
+    fctx.fillRect(WIDTH - 280, 0, 280, HEIGHT);
+    console.log("[GameMap] floor painted", WIDTH + "x" + HEIGHT);
   })();
 
   function rectHitsCircle(rx, ry, rw, rh, cx, cy, cr) {
@@ -120,9 +118,8 @@ var GameMap = (function () {
     y = Math.max(radius, Math.min(HEIGHT - radius, y));
     for (var i = 0; i < OBSTACLES.length; i++) {
       var o = OBSTACLES[i];
-      if (o.type === "bush") continue; // soft
+      if (o.type === "bush") continue;
       if (!rectHitsCircle(o.x, o.y, o.w, o.h, x, y, radius)) continue;
-      // Push out (simple)
       var ox = o.x + o.w / 2;
       var oy = o.y + o.h / 2;
       var dx = x - ox;
@@ -140,11 +137,8 @@ var GameMap = (function () {
   }
 
   function tryMove(x, y, dx, dy, radius) {
-    var nx = x + dx;
-    var ny = y + dy;
-    var r1 = resolveCircleCollision(nx, y, radius);
-    var r2 = resolveCircleCollision(r1.x, ny, radius);
-    return r2;
+    var r1 = resolveCircleCollision(x + dx, y, radius);
+    return resolveCircleCollision(r1.x, y + dy, radius);
   }
 
   function pointBlocked(px, py) {
@@ -166,7 +160,7 @@ var GameMap = (function () {
     ctx.fill();
     ctx.fillStyle = "#3d8f4e";
     ctx.beginPath();
-    ctx.arc(sx + w / 2 - 4, sy + h * 0.28, w * 0.35, 0, Math.PI * 2);
+    ctx.arc(sx + w / 2 - 3, sy + h * 0.28, w * 0.35, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -177,7 +171,7 @@ var GameMap = (function () {
     ctx.fill();
     ctx.fillStyle = "#8a8e92";
     ctx.beginPath();
-    ctx.ellipse(sx + w / 2 - 4, sy + h / 2 - 3, w / 4, h / 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx + w / 2 - 3, sy + h / 2 - 2, w / 4, h / 4, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -201,10 +195,10 @@ var GameMap = (function () {
     ctx.strokeStyle = "#3d2410";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(sx + 4, sy + h * 0.3);
-    ctx.lineTo(sx + w - 4, sy + h * 0.3);
-    ctx.moveTo(sx + 4, sy + h * 0.7);
-    ctx.lineTo(sx + w - 4, sy + h * 0.7);
+    ctx.moveTo(sx + 3, sy + h * 0.3);
+    ctx.lineTo(sx + w - 3, sy + h * 0.3);
+    ctx.moveTo(sx + 3, sy + h * 0.7);
+    ctx.lineTo(sx + w - 3, sy + h * 0.7);
     ctx.stroke();
   }
 
@@ -218,19 +212,18 @@ var GameMap = (function () {
 
   function drawTower(ctx, sx, sy, team) {
     ctx.fillStyle = team === 0 ? "#3d5c40" : "#3d4a5c";
-    ctx.fillRect(sx - 14, sy - 28, 28, 40);
+    ctx.fillRect(sx - 12, sy - 24, 24, 36);
     ctx.fillStyle = team === 0 ? "#3d9e58" : "#5a8ec8";
     ctx.beginPath();
-    ctx.moveTo(sx, sy - 48);
-    ctx.lineTo(sx + 16, sy - 28);
-    ctx.lineTo(sx - 16, sy - 28);
+    ctx.moveTo(sx, sy - 42);
+    ctx.lineTo(sx + 14, sy - 24);
+    ctx.lineTo(sx - 14, sy - 24);
     ctx.closePath();
     ctx.fill();
-    // Range hint
-    ctx.strokeStyle = team === 0 ? "rgba(61,158,88,0.15)" : "rgba(90,140,200,0.15)";
+    ctx.strokeStyle = team === 0 ? "rgba(61,158,88,0.12)" : "rgba(90,140,200,0.12)";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(sx, sy, 180, 0, Math.PI * 2);
+    ctx.arc(sx, sy, 150, 0, Math.PI * 2);
     ctx.stroke();
   }
 
@@ -249,63 +242,79 @@ var GameMap = (function () {
       ctx.strokeStyle = "#f0c040";
       ctx.lineWidth = 4;
       ctx.beginPath();
-      ctx.arc(sx, sy, f.radius + 6, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+      ctx.arc(sx, sy, f.radius + 5, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
       ctx.stroke();
     }
     ctx.fillStyle = "#e8eef4";
-    ctx.font = "bold 13px monospace";
+    ctx.font = "bold 12px monospace";
     ctx.textAlign = "center";
-    ctx.fillText(f.name, sx, sy - f.radius - 10);
+    ctx.fillText(f.name, sx, sy - f.radius - 8);
     if (live && live.structureHp != null && live.structureMax) {
       var pct = live.structureHp / live.structureMax;
       ctx.fillStyle = "#0a0c0e";
-      ctx.fillRect(sx - 32, sy + f.radius + 6, 64, 7);
+      ctx.fillRect(sx - 28, sy + f.radius + 5, 56, 6);
       ctx.fillStyle = pct > 0.35 ? (team === 0 ? "#3d9e58" : "#5a8ec8") : "#d13a35";
-      ctx.fillRect(sx - 32, sy + f.radius + 6, 64 * pct, 7);
+      ctx.fillRect(sx - 28, sy + f.radius + 5, 56 * pct, 6);
     }
   }
 
+  var _drawCount = 0;
   function draw(ctx, cameraX, cameraY, viewW, viewH, extra) {
-    ctx.drawImage(floorCanvas, -cameraX, -cameraY);
-    ctx.strokeStyle = "#0a0e10";
-    ctx.lineWidth = 14;
-    ctx.strokeRect(-cameraX, -cameraY, WIDTH, HEIGHT);
-
-    ctx.font = "bold 18px monospace";
-    ctx.textAlign = "center";
-    ctx.fillStyle = "rgba(61,158,88,0.3)";
-    ctx.fillText("CAMP", 180 - cameraX, 50 - cameraY);
-    ctx.fillStyle = "rgba(90,140,200,0.3)";
-    ctx.fillText("CASTLE", WIDTH - 180 - cameraX, 50 - cameraY);
-
-    var i, ob, sx, sy;
-    for (i = 0; i < OBSTACLES.length; i++) {
-      ob = OBSTACLES[i];
-      sx = ob.x - cameraX;
-      sy = ob.y - cameraY;
-      if (sx + ob.w < -40 || sy + ob.h < -40 || sx > viewW + 40 || sy > viewH + 40) continue;
-      if (ob.type === "tree") drawTree(ctx, sx, sy, ob.w, ob.h);
-      else if (ob.type === "rock") drawRock(ctx, sx, sy, ob.w, ob.h);
-      else if (ob.type === "crate") drawCrate(ctx, sx, sy, ob.w, ob.h);
-      else if (ob.type === "barrel") drawBarrel(ctx, sx, sy, ob.w, ob.h);
-      else if (ob.type === "wall") drawWall(ctx, sx, sy, ob.w, ob.h);
+    if (!ctx) {
+      console.error("[GameMap.draw] no ctx");
+      return;
     }
+    try {
+      ctx.drawImage(floorCanvas, -cameraX, -cameraY);
+      ctx.strokeStyle = "#0a0e10";
+      ctx.lineWidth = 12;
+      ctx.strokeRect(-cameraX, -cameraY, WIDTH, HEIGHT);
 
-    for (i = 0; i < TOWERS.length; i++) {
-      var tw = TOWERS[i];
-      drawTower(ctx, tw.x - cameraX, tw.y - cameraY, tw.team);
-    }
+      ctx.font = "bold 16px monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(61,158,88,0.35)";
+      ctx.fillText("CAMP", 120 - cameraX, 40 - cameraY);
+      ctx.fillStyle = "rgba(90,140,200,0.35)";
+      ctx.fillText("CASTLE", WIDTH - 120 - cameraX, 40 - cameraY);
 
-    var liveFlags = (extra && extra.flags) ? extra.flags : [];
-    for (i = 0; i < FLAGS.length; i++) {
-      var flag = FLAGS[i];
-      var live = null;
-      for (var li = 0; li < liveFlags.length; li++) {
-        if (liveFlags[li].id === flag.id) { live = liveFlags[li]; break; }
+      var i, ob, sx, sy;
+      for (i = 0; i < OBSTACLES.length; i++) {
+        ob = OBSTACLES[i];
+        sx = ob.x - cameraX;
+        sy = ob.y - cameraY;
+        if (sx + ob.w < -40 || sy + ob.h < -40 || sx > viewW + 40 || sy > viewH + 40) continue;
+        if (ob.type === "tree") drawTree(ctx, sx, sy, ob.w, ob.h);
+        else if (ob.type === "rock") drawRock(ctx, sx, sy, ob.w, ob.h);
+        else if (ob.type === "crate") drawCrate(ctx, sx, sy, ob.w, ob.h);
+        else if (ob.type === "barrel") drawBarrel(ctx, sx, sy, ob.w, ob.h);
+        else if (ob.type === "wall") drawWall(ctx, sx, sy, ob.w, ob.h);
       }
-      drawFlagZone(ctx, flag.x - cameraX, flag.y - cameraY, flag, live);
+
+      for (i = 0; i < TOWERS.length; i++) {
+        var tw = TOWERS[i];
+        drawTower(ctx, tw.x - cameraX, tw.y - cameraY, tw.team);
+      }
+
+      var liveFlags = (extra && extra.flags) ? extra.flags : [];
+      for (i = 0; i < FLAGS.length; i++) {
+        var flag = FLAGS[i];
+        var live = null;
+        for (var li = 0; li < liveFlags.length; li++) {
+          if (liveFlags[li].id === flag.id) { live = liveFlags[li]; break; }
+        }
+        drawFlagZone(ctx, flag.x - cameraX, flag.y - cameraY, flag, live);
+      }
+
+      _drawCount++;
+      if (_drawCount === 1 || _drawCount % 300 === 0) {
+        console.log("[GameMap.draw] ok #" + _drawCount, "cam", Math.round(cameraX), Math.round(cameraY));
+      }
+    } catch (err) {
+      console.error("[GameMap.draw] ERROR", err);
     }
   }
+
+  console.log("[GameMap] ready", WIDTH + "x" + HEIGHT, "flags", FLAGS.length, "towers", TOWERS.length);
 
   return {
     WIDTH: WIDTH,
