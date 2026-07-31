@@ -415,27 +415,78 @@ var Game = (function () {
   }
 
   function drawNpc(ctx, sx, sy, npc) {
+  function drawNpc(ctx, sx, sy, npc) {
     ctx.save();
     ctx.translate(sx, sy);
-    ctx.rotate(npc.angle);
-    ctx.fillStyle = npc.color || "#888";
+    ctx.rotate(npc.angle || 0);
+
+    var isRam = !!npc.isRam;
+    var scale = isRam ? 1.35 : 1;
+    var body = npc.color || "#c9a227";
+    var r = 10 * scale;
+
+    // Cat body
+    ctx.fillStyle = body;
     ctx.beginPath();
-    ctx.arc(0, 0, 10, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, r * 1.1, r * 0.75, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.4)";
+
+    // Head
     ctx.beginPath();
-    ctx.moveTo(10, 0);
-    ctx.lineTo(4, -4);
-    ctx.lineTo(4, 4);
+    ctx.arc(r * 0.85, -r * 0.15, r * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ears
+    ctx.beginPath();
+    ctx.moveTo(r * 0.55, -r * 0.55);
+    ctx.lineTo(r * 0.7, -r * 1.05);
+    ctx.lineTo(r * 0.95, -r * 0.5);
     ctx.closePath();
     ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(r * 0.95, -r * 0.45);
+    ctx.lineTo(r * 1.25, -r * 0.95);
+    ctx.lineTo(r * 1.35, -r * 0.35);
+    ctx.closePath();
+    ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = "#1a120c";
+    ctx.beginPath();
+    ctx.arc(r * 0.95, -r * 0.2, 1.6, 0, Math.PI * 2);
+    ctx.arc(r * 1.2, -r * 0.2, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail
+    ctx.strokeStyle = body;
+    ctx.lineWidth = 3 * scale;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.9, 0);
+    ctx.quadraticCurveTo(-r * 1.6, -r * 0.8, -r * 1.3, -r * 1.2);
+    ctx.stroke();
+
+    // Class badge (tiny icon color ring)
+    var badge = "#fff";
+    if (npc.classId === "warrior") badge = "#c0392b";
+    else if (npc.classId === "ranger") badge = "#27ae60";
+    else if (npc.classId === "mage") badge = "#8e44ad";
+    else if (npc.classId === "monk") badge = "#f39c12";
+    ctx.strokeStyle = badge;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.25, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // HP bar
     if (npc.hp < npc.maxHp) {
       var pct = npc.hp / npc.maxHp;
+      ctx.rotate(-(npc.angle || 0));
       ctx.fillStyle = "#1a1a1a";
-      ctx.fillRect(-12, -18, 24, 4);
+      ctx.fillRect(-12, -r - 14, 24, 4);
       ctx.fillStyle = pct > 0.4 ? "#3d9e58" : "#d13a35";
-      ctx.fillRect(-12, -18, 24 * pct, 4);
+      ctx.fillRect(-12, -r - 14, 24 * pct, 4);
     }
+
     ctx.restore();
   }
 
