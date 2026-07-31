@@ -539,4 +539,13 @@
 
     if (typeof AudioFX !== "undefined") AudioFX.startLobbyMusic();
   });
+  // DEBUG overlay — quitar cuando funcione
+  window.__RA_DEBUG = true;
+  window.addEventListener("error", function (e) {
+    var d = document.getElementById("ra-debug") || document.createElement("div");
+    d.id = "ra-debug";
+    d.style.cssText = "position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;background:#000c;color:#f55;font:12px monospace;padding:8px;max-height:40%;overflow:auto;";
+    d.textContent = (d.textContent || "") + "\n" + (e.message || e);
+    document.body.appendChild(d);
+  });
 })();
