@@ -1,9 +1,9 @@
 /**
- * engine/map.js — Compact rectangular Sherwood arena (1600×900).
- * With integration logging.
+ * engine/map.js — Textured 1600×900 Sherwood arena.
+ * Trees, rocks, bushes, crates, towers, team tints.
  */
 var GameMap = (function () {
-  console.log("[GameMap] loading…");
+  console.log("[GameMap] loading improved…");
 
   var WIDTH = 1600;
   var HEIGHT = 900;
@@ -31,41 +31,34 @@ var GameMap = (function () {
   var OBSTACLES = [];
   (function buildObstacles() {
     var i;
-    for (i = 0; i < 12; i++) {
+    for (i = 0; i < 14; i++) {
       OBSTACLES.push({
         type: "tree",
-        x: 40 + (i % 4) * 55,
-        y: 60 + Math.floor(i / 4) * 280,
-        w: 32, h: 32
+        x: 35 + (i % 5) * 48 + (i % 3) * 4,
+        y: 50 + Math.floor(i / 5) * 260 + (i % 2) * 20,
+        w: 34, h: 34
       });
     }
-    for (i = 0; i < 12; i++) {
+    for (i = 0; i < 14; i++) {
       OBSTACLES.push({
         type: "tree",
-        x: 1380 + (i % 4) * 50,
-        y: 60 + Math.floor(i / 4) * 280,
-        w: 32, h: 32
+        x: 1360 + (i % 5) * 44,
+        y: 50 + Math.floor(i / 5) * 260,
+        w: 34, h: 34
       });
     }
-    var rocks = [
-      [400, 120], [700, 100], [1000, 130],
-      [450, 780], [750, 800], [1050, 770],
-      [650, 450], [950, 420]
-    ];
-    for (i = 0; i < rocks.length; i++) {
-      OBSTACLES.push({ type: "rock", x: rocks[i][0], y: rocks[i][1], w: 36, h: 28 });
-    }
-    var props = [
-      [480, 350], [560, 240], [760, 380], [840, 520],
-      [1040, 560], [1120, 680], [300, 450], [1280, 450]
-    ];
-    for (i = 0; i < props.length; i++) {
-      OBSTACLES.push({
-        type: i % 2 ? "crate" : "barrel",
-        x: props[i][0], y: props[i][1],
-        w: 24, h: 24
-      });
-    }
+    [[600, 180], [900, 200], [750, 700], [1050, 720]].forEach(function (p) {
+      OBSTACLES.push({ type: "tree", x: p[0], y: p[1], w: 30, h: 30 });
+    });
+    [[400, 120], [700, 100], [1000, 130], [450, 780], [750, 800], [1050, 770], [650, 450], [950, 420]].forEach(function (p) {
+      OBSTACLES.push({ type: "rock", x: p[0], y: p[1], w: 36, h: 28 });
+    });
+    [[500, 500], [850, 300], [1100, 480], [350, 600], [1200, 350], [700, 550]].forEach(function (p) {
+      OBSTACLES.push({ type: "bush", x: p[0], y: p[1], w: 28, h: 22 });
+    });
+    [[480, 350], [560, 240], [760, 380], [840, 520], [1040, 560], [1120, 680], [300, 450], [1280, 450]].forEach(function (p, idx) {
+      OBSTACLES.push({ type: idx % 2 ? "crate" : "barrel", x: p[0], y: p[1], w: 24, h: 24 });
+    });
     OBSTACLES.push({ type: "wall", x: 180, y: 380, w: 70, h: 16 });
     OBSTACLES.push({ type: "wall", x: 180, y: 500, w: 70, h: 16 });
     OBSTACLES.push({ type: "wall", x: 1350, y: 380, w: 70, h: 16 });
@@ -78,30 +71,46 @@ var GameMap = (function () {
   floorCanvas.height = HEIGHT;
   (function paintFloor() {
     var fctx = floorCanvas.getContext("2d");
-    if (!fctx) {
-      console.error("[GameMap] no 2d context for floor");
-      return;
-    }
-    fctx.fillStyle = "#2d4a30";
+    if (!fctx) return;
+
+    fctx.fillStyle = "#2a4830";
     fctx.fillRect(0, 0, WIDTH, HEIGHT);
+
     var i;
-    for (i = 0; i < 280; i++) {
-      fctx.fillStyle = i % 2 ? "rgba(45,90,50,0.35)" : "rgba(30,60,35,0.28)";
+    for (i = 0; i < 320; i++) {
+      fctx.fillStyle = i % 3 === 0 ? "rgba(50,100,55,0.35)" : i % 3 === 1 ? "rgba(28,55,32,0.3)" : "rgba(60,110,65,0.2)";
       fctx.beginPath();
-      fctx.arc(Math.random() * WIDTH, Math.random() * HEIGHT, 16 + Math.random() * 40, 0, Math.PI * 2);
+      fctx.arc(Math.random() * WIDTH, Math.random() * HEIGHT, 12 + Math.random() * 48, 0, Math.PI * 2);
       fctx.fill();
     }
-    fctx.strokeStyle = "rgba(90,70,40,0.28)";
-    fctx.lineWidth = 36;
+    for (i = 0; i < 40; i++) {
+      fctx.fillStyle = "rgba(90,70,40,0.18)";
+      fctx.beginPath();
+      fctx.ellipse(Math.random() * WIDTH, Math.random() * HEIGHT, 30 + Math.random() * 50, 18 + Math.random() * 30, Math.random(), 0, Math.PI * 2);
+      fctx.fill();
+    }
+    for (i = 0; i < 20; i++) {
+      fctx.fillStyle = "rgba(0,0,0,0.04)";
+      fctx.fillRect(0, i * 45, WIDTH, 18);
+    }
+
+    fctx.strokeStyle = "rgba(100,78,45,0.32)";
+    fctx.lineWidth = 38;
+    fctx.lineCap = "round";
     fctx.beginPath();
     fctx.moveTo(100, 450);
     fctx.quadraticCurveTo(520, 320, 800, 450);
     fctx.quadraticCurveTo(1080, 580, 1500, 450);
     fctx.stroke();
+    fctx.strokeStyle = "rgba(120,95,55,0.15)";
+    fctx.lineWidth = 22;
+    fctx.stroke();
+
     fctx.fillStyle = "rgba(61,158,88,0.1)";
     fctx.fillRect(0, 0, 280, HEIGHT);
     fctx.fillStyle = "rgba(90,140,200,0.1)";
     fctx.fillRect(WIDTH - 280, 0, 280, HEIGHT);
+
     console.log("[GameMap] floor painted", WIDTH + "x" + HEIGHT);
   })();
 
@@ -152,32 +161,73 @@ var GameMap = (function () {
   }
 
   function drawTree(ctx, sx, sy, w, h) {
-    ctx.fillStyle = "#5c3a1e";
-    ctx.fillRect(sx + w * 0.35, sy + h * 0.45, w * 0.3, h * 0.55);
-    ctx.fillStyle = "#2e6b3a";
+    ctx.fillStyle = "rgba(0,0,0,0.2)";
     ctx.beginPath();
-    ctx.arc(sx + w / 2, sy + h * 0.35, w * 0.55, 0, Math.PI * 2);
+    ctx.ellipse(sx + w / 2 + 3, sy + h * 0.92, w * 0.45, h * 0.18, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#3d8f4e";
+    ctx.fillStyle = "#5c3a1e";
+    ctx.fillRect(sx + w * 0.38, sy + h * 0.48, w * 0.24, h * 0.5);
+    ctx.fillStyle = "#6b4a28";
+    ctx.fillRect(sx + w * 0.4, sy + h * 0.5, w * 0.1, h * 0.45);
+    ctx.fillStyle = "#1e5a2c";
     ctx.beginPath();
-    ctx.arc(sx + w / 2 - 3, sy + h * 0.28, w * 0.35, 0, Math.PI * 2);
+    ctx.arc(sx + w / 2, sy + h * 0.38, w * 0.52, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#2e7a3c";
+    ctx.beginPath();
+    ctx.arc(sx + w / 2 - 4, sy + h * 0.3, w * 0.38, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#3d9e50";
+    ctx.beginPath();
+    ctx.arc(sx + w / 2 + 3, sy + h * 0.26, w * 0.22, 0, Math.PI * 2);
     ctx.fill();
   }
 
   function drawRock(ctx, sx, sy, w, h) {
-    ctx.fillStyle = "#6a6e72";
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(sx + w / 2 + 2, sy + h * 0.85, w * 0.45, h * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#5a5e62";
     ctx.beginPath();
     ctx.ellipse(sx + w / 2, sy + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#8a8e92";
+    ctx.fillStyle = "#7a7e82";
     ctx.beginPath();
-    ctx.ellipse(sx + w / 2 - 3, sy + h / 2 - 2, w / 4, h / 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx + w / 2 - 4, sy + h / 2 - 4, w / 4, h / 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#4a4e52";
+    ctx.beginPath();
+    ctx.ellipse(sx + w / 2 + 5, sy + h / 2 + 3, w / 5, h / 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawBush(ctx, sx, sy, w, h) {
+    ctx.fillStyle = "rgba(0,0,0,0.12)";
+    ctx.beginPath();
+    ctx.ellipse(sx + w / 2, sy + h * 0.9, w * 0.5, h * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#2d6b3a";
+    ctx.beginPath();
+    ctx.ellipse(sx + w / 2, sy + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#3d8f4e";
+    ctx.beginPath();
+    ctx.ellipse(sx + w / 2 - 4, sy + h / 2 - 2, w / 3, h / 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#4aaa5a";
+    ctx.beginPath();
+    ctx.arc(sx + w * 0.35, sy + h * 0.35, 3, 0, Math.PI * 2);
     ctx.fill();
   }
 
   function drawCrate(ctx, sx, sy, w, h) {
+    ctx.fillStyle = "rgba(0,0,0,0.15)";
+    ctx.fillRect(sx + 2, sy + h - 2, w, 4);
     ctx.fillStyle = "#8b6914";
     ctx.fillRect(sx, sy, w, h);
+    ctx.fillStyle = "#a08020";
+    ctx.fillRect(sx + 2, sy + 2, w - 4, 4);
     ctx.strokeStyle = "#5c450c";
     ctx.lineWidth = 2;
     ctx.strokeRect(sx, sy, w, h);
@@ -188,9 +238,17 @@ var GameMap = (function () {
   }
 
   function drawBarrel(ctx, sx, sy, w, h) {
+    ctx.fillStyle = "rgba(0,0,0,0.15)";
+    ctx.beginPath();
+    ctx.ellipse(sx + w / 2 + 1, sy + h * 0.9, w / 2, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = "#7a4a28";
     ctx.beginPath();
     ctx.ellipse(sx + w / 2, sy + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#9a6a40";
+    ctx.beginPath();
+    ctx.ellipse(sx + w / 2 - 2, sy + h / 2 - 3, w / 4, h / 4, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "#3d2410";
     ctx.lineWidth = 2;
@@ -205,22 +263,45 @@ var GameMap = (function () {
   function drawWall(ctx, sx, sy, w, h) {
     ctx.fillStyle = "#4a4e52";
     ctx.fillRect(sx, sy, w, h);
+    ctx.fillStyle = "#5a5e62";
+    ctx.fillRect(sx + 2, sy + 2, w - 4, 3);
     ctx.strokeStyle = "#2a2e32";
     ctx.lineWidth = 1;
     ctx.strokeRect(sx, sy, w, h);
   }
 
   function drawTower(ctx, sx, sy, team) {
-    ctx.fillStyle = team === 0 ? "#3d5c40" : "#3d4a5c";
-    ctx.fillRect(sx - 12, sy - 24, 24, 36);
-    ctx.fillStyle = team === 0 ? "#3d9e58" : "#5a8ec8";
+    var col = team === 0 ? "#3d5c40" : "#3d4a5c";
+    var accent = team === 0 ? "#3d9e58" : "#5a8ec8";
+    ctx.fillStyle = "rgba(0,0,0,0.2)";
     ctx.beginPath();
-    ctx.moveTo(sx, sy - 42);
-    ctx.lineTo(sx + 14, sy - 24);
-    ctx.lineTo(sx - 14, sy - 24);
+    ctx.ellipse(sx + 2, sy + 8, 16, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = col;
+    ctx.fillRect(sx - 12, sy - 26, 24, 38);
+    ctx.fillStyle = accent;
+    ctx.fillRect(sx - 10, sy - 24, 20, 4);
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - 44);
+    ctx.lineTo(sx + 15, sy - 26);
+    ctx.lineTo(sx - 15, sy - 26);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = team === 0 ? "rgba(61,158,88,0.12)" : "rgba(90,140,200,0.12)";
+    ctx.strokeStyle = "#c9a227";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - 44);
+    ctx.lineTo(sx, sy - 54);
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - 54);
+    ctx.lineTo(sx + 10, sy - 50);
+    ctx.lineTo(sx, sy - 46);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = team === 0 ? "rgba(61,158,88,0.1)" : "rgba(90,140,200,0.1)";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.arc(sx, sy, 150, 0, Math.PI * 2);
@@ -230,7 +311,7 @@ var GameMap = (function () {
   function drawFlagZone(ctx, sx, sy, f, live) {
     var team = live && live.team != null ? live.team : f.team;
     var progress = live && live.progress != null ? live.progress : 0;
-    var col = team === 0 ? "rgba(61,158,88,0.35)" : team === 1 ? "rgba(90,140,200,0.35)" : "rgba(200,200,200,0.2)";
+    var col = team === 0 ? "rgba(61,158,88,0.32)" : team === 1 ? "rgba(90,140,200,0.32)" : "rgba(200,200,200,0.18)";
     ctx.fillStyle = col;
     ctx.beginPath();
     ctx.arc(sx, sy, f.radius, 0, Math.PI * 2);
@@ -260,10 +341,7 @@ var GameMap = (function () {
 
   var _drawCount = 0;
   function draw(ctx, cameraX, cameraY, viewW, viewH, extra) {
-    if (!ctx) {
-      console.error("[GameMap.draw] no ctx");
-      return;
-    }
+    if (!ctx) return;
     try {
       ctx.drawImage(floorCanvas, -cameraX, -cameraY);
       ctx.strokeStyle = "#0a0e10";
@@ -282,9 +360,10 @@ var GameMap = (function () {
         ob = OBSTACLES[i];
         sx = ob.x - cameraX;
         sy = ob.y - cameraY;
-        if (sx + ob.w < -40 || sy + ob.h < -40 || sx > viewW + 40 || sy > viewH + 40) continue;
+        if (sx + ob.w < -50 || sy + ob.h < -50 || sx > viewW + 50 || sy > viewH + 50) continue;
         if (ob.type === "tree") drawTree(ctx, sx, sy, ob.w, ob.h);
         else if (ob.type === "rock") drawRock(ctx, sx, sy, ob.w, ob.h);
+        else if (ob.type === "bush") drawBush(ctx, sx, sy, ob.w, ob.h);
         else if (ob.type === "crate") drawCrate(ctx, sx, sy, ob.w, ob.h);
         else if (ob.type === "barrel") drawBarrel(ctx, sx, sy, ob.w, ob.h);
         else if (ob.type === "wall") drawWall(ctx, sx, sy, ob.w, ob.h);
@@ -307,15 +386,14 @@ var GameMap = (function () {
 
       _drawCount++;
       if (_drawCount === 1 || _drawCount % 300 === 0) {
-        console.log("[GameMap.draw] ok #" + _drawCount, "cam", Math.round(cameraX), Math.round(cameraY));
+        console.log("[GameMap.draw] #" + _drawCount);
       }
     } catch (err) {
-      console.error("[GameMap.draw] ERROR", err);
+      console.error("[GameMap.draw]", err);
     }
   }
 
-  console.log("[GameMap] ready", WIDTH + "x" + HEIGHT, "flags", FLAGS.length, "towers", TOWERS.length);
-
+  console.log("[GameMap] ready", WIDTH + "x" + HEIGHT);
   return {
     WIDTH: WIDTH,
     HEIGHT: HEIGHT,
