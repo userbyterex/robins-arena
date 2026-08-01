@@ -1,5 +1,5 @@
 /**
- * main.js — Lobby + launchGame completo (con debug en pantalla).
+ * main.js — Lobby + launchGame (sin overlay debug).
  */
 (function () {
   "use strict";
@@ -14,22 +14,6 @@
   var gameRunning = false;
 
   function $(id) { return document.getElementById(id); }
-
-  function showDebug(msg) {
-    var d = document.getElementById("ra-debug");
-    if (!d) {
-      d = document.createElement("div");
-      d.id = "ra-debug";
-      d.style.cssText = "position:fixed;left:6px;right:6px;bottom:6px;z-index:99999;background:rgba(0,0,0,0.85);color:#c9a227;font:12px monospace;padding:8px;max-height:45%;overflow:auto;border:1px solid #c9a227;border-radius:6px;pointer-events:none;";
-      document.body.appendChild(d);
-    }
-    d.textContent = (d.textContent ? d.textContent + "\n" : "") + String(msg);
-    console.log("[RA]", msg);
-  }
-
-  window.addEventListener("error", function (e) {
-    showDebug("ERROR: " + (e.message || e));
-  });
 
   function showPanel(id) {
     ["panel-setup", "panel-join", "panel-lobby"].forEach(function (pid) {
@@ -244,16 +228,8 @@
     tick();
   }
 
-  /**
-   * launchGame — arranca partida (solo / host / join)
-   */
   function launchGame(configs, myId, asHost, asSolo) {
-    showDebug("launchGame start host=" + asHost + " solo=" + asSolo + " id=" + myId);
-
-    if (gameRunning) {
-      showDebug("already running");
-      return;
-    }
+    if (gameRunning) return;
     gameRunning = true;
     document.body.classList.add("playing");
 
@@ -264,29 +240,23 @@
 
     var canvas = $("game-canvas");
     if (!canvas) {
-      showDebug("NO canvas #game-canvas");
+      console.error("[main] no canvas");
       gameRunning = false;
       return;
     }
 
     canvas.width = window.innerWidth || 960;
     canvas.height = window.innerHeight || 640;
-    showDebug("canvas " + canvas.width + "x" + canvas.height);
-
-    showDebug("GameMap=" + (typeof GameMap) + " HostSim=" + (typeof HostSim) + " Game=" + (typeof Game));
 
     if (typeof Game === "undefined" || !Game.init) {
-      showDebug("FATAL: Game module missing — check js/game.js");
+      console.error("[main] Game missing");
       gameRunning = false;
       return;
     }
     if (typeof HostSim === "undefined" || !HostSim.init) {
-      showDebug("FATAL: HostSim missing — check js/host-sim.js");
+      console.error("[main] HostSim missing");
       gameRunning = false;
       return;
-    }
-    if (typeof GameMap === "undefined") {
-      showDebug("WARN: GameMap missing — check js/engine/map.js");
     }
 
     try {
@@ -297,9 +267,8 @@
         isSolo: asSolo,
         playerConfigs: configs || []
       });
-      showDebug("Game.init OK configs=" + ((configs && configs.length) || 0));
     } catch (err) {
-      showDebug("Game.init ERROR: " + (err && err.message ? err.message : err));
+      console.error("[main] Game.init", err);
       gameRunning = false;
       return;
     }
@@ -308,14 +277,10 @@
       InputManager.init(canvas, function (input) {
         if (typeof Game !== "undefined" && Game.setInput) Game.setInput(input);
       });
-      showDebug("InputManager OK");
-    } else {
-      showDebug("WARN: InputManager missing");
     }
 
     if (typeof TouchControls !== "undefined" && TouchControls.init) {
-      try { TouchControls.init(); showDebug("TouchControls OK"); }
-      catch (e) { showDebug("TouchControls err: " + e.message); }
+      try { TouchControls.init(); } catch (e) { console.warn(e); }
     }
 
     if (typeof WeaponBar !== "undefined" && $("weapon-bar") && WeaponBar.init) {
@@ -326,6 +291,31 @@
       });
     }
 
+    var fsBtn = $("btn-fullscreen");
+    if (fsBtn) {
+      fsBtn.onclick = function () {
+        var el = document.getElementById("game-screen");
+        if (!el) return;
+        var doc = document;
+        if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+          if (doc.exitFullscreen) doc.exitFullscreen();
+          else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+        } else {
+          if (el.requestFullscreen) el.requestFullscreen();
+          else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        }
+        setTimeout(function () {
+          if (canvas) {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            if (typeof Camera !== "undefined" && Camera.setViewport) {
+              Camera.setViewport(canvas.width, canvas.height);
+            }
+          }
+        }, 200);
+      };
+    }
+
     if (typeof AudioFX !== "undefined") {
       try {
         if (AudioFX.resume) AudioFX.resume();
@@ -333,9 +323,7 @@
       } catch (e) {}
     }
 
-    runCountdown(3, function () {
-      showDebug("countdown done — play!");
-    });
+    runCountdown(3, function () {});
   }
 
   function backToLobby() {
@@ -357,9 +345,6 @@
     if (lobby) lobby.classList.remove("hidden");
     showPanel("panel-setup");
 
-    var dbg = document.getElementById("ra-debug");
-    if (dbg) dbg.remove();
-
     if (typeof AudioFX !== "undefined") {
       try {
         if (AudioFX.stopBattleMusic) AudioFX.stopBattleMusic();
@@ -374,7 +359,6 @@
   }
 
   function startSolo() {
-    showDebug("startSolo");
     isSolo = true;
     isHost = true;
     var cfg = buildLocalConfig();
@@ -561,9 +545,6 @@
   }
 
   window.addEventListener("DOMContentLoaded", function () {
-    showDebug("main.js loaded");
-    showDebug("GameMap=" + typeof GameMap + " HostSim=" + typeof HostSim + " Game=" + typeof Game);
-
     initCharacterCreator();
     initClassPicker();
 
