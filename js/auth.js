@@ -1,16 +1,14 @@
 /**
  * auth.js — Privy REQUIRED to play.
- * Email OTP via @privy-io/js-sdk-core (esm.sh).
+ * App ID: cmsbqsb7s01rx0djo13n8wy9b
  */
 var Auth = (function () {
   "use strict";
 
-  // ─── YOUR KEYS ──────────────────────────────────────────────────────────
   var PRIVY_CONFIG = {
-    appId: "YOUR_PRIVY_APP_ID",
-    clientId: "YOUR_PRIVY_CLIENT_ID"
+    appId: "cmsbqsb7s01rx0djo13n8wy9b",
+    clientId: ""
   };
-  // ────────────────────────────────────────────────────────────────────────
 
   var privy = null;
   var user = null;
@@ -64,7 +62,7 @@ var Auth = (function () {
 
   async function init() {
     if (!isConfigured()) {
-      console.warn("[Auth] Privy not configured — set appId in js/auth.js");
+      console.warn("[Auth] Privy not configured");
       ready = true;
       notify();
       updateUI();
@@ -100,7 +98,7 @@ var Auth = (function () {
       if (!email) return null;
 
       if (!privy.auth || !privy.auth.email || !privy.auth.email.sendCode) {
-        alert("Enable Email login in Privy Dashboard.");
+        alert("Enable Email login in Privy Dashboard → Authentication methods.");
         return null;
       }
 
@@ -154,11 +152,8 @@ var Auth = (function () {
       label.textContent = authed ? ("👤 " + (getDisplayName() || "Hunter")) : "";
       label.classList.toggle("hidden", !authed);
     }
-    if (setupMsg) {
-      setupMsg.classList.toggle("hidden", configured);
-    }
+    if (setupMsg) setupMsg.classList.toggle("hidden", configured);
 
-    // Lock play buttons until authenticated
     ["btn-solo", "btn-host", "btn-join-open"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) {
