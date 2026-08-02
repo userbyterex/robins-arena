@@ -22,11 +22,25 @@
       <p class="subtitle">Conquest · capture zones · destroy HQ</p>
     </div>
 
+    <!-- Integrated login / register -->
     <div id="auth-gate" class="auth-gate">
       <p class="auth-gate-title">🔐 Sign in to play</p>
-      <p class="auth-gate-sub">Create your hunter profile with email</p>
-      <button type="button" id="btn-auth-login" class="btn-primary btn-glow">Login with Email</button>
-      <p id="auth-setup-msg" class="auth-setup-msg hidden">Set PRIVY_CONFIG in js/auth.js</p>
+      <p class="auth-gate-sub">Email login — stay on this page while you check your inbox</p>
+
+      <div id="auth-step-email">
+        <input type="email" id="auth-email" class="auth-input" placeholder="you@email.com" autocomplete="email" />
+        <button type="button" id="btn-auth-send" class="btn-primary btn-glow">Send code</button>
+      </div>
+
+      <div id="auth-step-code" class="hidden">
+        <p class="auth-gate-sub">Code sent to <strong id="auth-email-shown"></strong></p>
+        <input type="text" id="auth-code" class="auth-input" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+        <button type="button" id="btn-auth-verify" class="btn-primary btn-glow">Verify & play</button>
+        <button type="button" id="btn-auth-back-email" class="btn-small auth-back">← Change email</button>
+      </div>
+
+      <p id="auth-msg" class="auth-msg"></p>
+      <p id="auth-setup-msg" class="auth-setup-msg hidden">Missing App ID in js/auth.js</p>
     </div>
 
     <div class="auth-bar" id="auth-bar">
@@ -180,8 +194,8 @@
 <script src="js/game.js"></script>
 <script src="js/user-store.js"></script>
 <script src="js/ranking.js"></script>
-<script src="js/auth.js?v=privy3"></script>
-<script src="js/main.js?v=privy3"></script>
+<script src="js/auth.js?v=privy4"></script>
+<script src="js/main.js?v=privy4"></script>
 
 </body>
 </html>
