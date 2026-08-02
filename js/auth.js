@@ -1,14 +1,12 @@
 /**
- * auth.js — Privy REQUIRED to play.
+ * auth.js — Privy REQUIRED (classic script)
  * App ID: cmsbqsb7s01rx0djo13n8wy9b
  */
-var Auth = (function () {
+(function (global) {
   "use strict";
 
-  var PRIVY_CONFIG = {
-    appId: "cmsbqsb7s01rx0djo13n8wy9b",
-    clientId: ""
-  };
+  var APP_ID = "cmsbqsb7s01rx0djo13n8wy9b";
+  var CLIENT_ID = "";
 
   var privy = null;
   var user = null;
@@ -25,11 +23,15 @@ var Auth = (function () {
   function onChange(fn) {
     listeners.push(fn);
     if (ready) fn({ ready: ready, user: user, authenticated: !!user });
-    return function () { listeners = listeners.filter(function (f) { return f !== fn; }); };
+    return function () {
+      listeners = listeners.filter(function (f) { return f !== fn; });
+    };
   }
 
   function isConfigured() {
-    return !!(PRIVY_CONFIG.appId && PRIVY_CONFIG.appId !== "YOUR_PRIVY_APP_ID");
+    var ok = typeof APP_ID === "string" && APP_ID.length > 10 && APP_ID.indexOf("YOUR_") !== 0;
+    console.log("[Auth] isConfigured", ok, "appId=", APP_ID);
+    return ok;
   }
 
   function getDisplayName() {
@@ -37,7 +39,9 @@ var Auth = (function () {
     if (user.email && user.email.address) return user.email.address.split("@")[0].slice(0, 12);
     if (user.google && user.google.name) return String(user.google.name).split(" ")[0].slice(0, 12);
     if (user.twitter && user.twitter.username) return String(user.twitter.username).slice(0, 12);
-    if (user.wallet && user.wallet.address) return user.wallet.address.slice(0, 6) + "…" + user.wallet.address.slice(-4);
+    if (user.wallet && user.wallet.address) {
+      return user.wallet.address.slice(0, 6) + "…" + user.wallet.address.slice(-4);
+    }
     if (user.id) return "Hunter_" + String(user.id).slice(-4);
     return "Hunter";
   }
@@ -46,94 +50,101 @@ var Auth = (function () {
     return user && user.id ? user.id : null;
   }
 
-  async function loadSdk() {
-    if (privy) return privy;
-    var mod = await import("https://esm.sh/@privy-io/js-sdk-core@0.68.5");
-    var PrivyCtor = mod.default || mod.Privy;
-    var LocalStorage = mod.LocalStorage;
-    privy = new PrivyCtor({
-      appId: PRIVY_CONFIG.appId,
-      clientId: PRIVY_CONFIG.clientId || undefined,
-      storage: LocalStorage ? new LocalStorage() : undefined
+  function loadSdk() {
+    if (privy) return Promise.resolve(privy);
+    return import("https://esm.sh/@privy-io/js-sdk-core@0.68.5").then(function (mod) {
+      var PrivyCtor = mod.default || mod.Privy;
+      var LocalStorage = mod.LocalStorage;
+      var opts = { appId: APP_ID };
+      if (CLIENT_ID) opts.clientId = CLIENT_ID;
+      if (LocalStorage) opts.storage = new LocalStorage();
+      privy = new PrivyCtor(opts);
+      return privy.initialize().then(function () {
+        console.log("[Auth] SDK ready");
+        return privy;
+      });
     });
-    await privy.initialize();
-    return privy;
   }
 
-  async function init() {
+  function init() {
+    console.log("[Auth] init start");
     if (!isConfigured()) {
-      console.warn("[Auth] Privy not configured");
       ready = true;
       notify();
       updateUI();
-      return;
+      return Promise.resolve();
     }
-    try {
-      await loadSdk();
-      if (privy.user && typeof privy.user.get === "function") {
-        var res = await privy.user.get();
-        user = res && res.user ? res.user : null;
-      }
-    } catch (err) {
-      console.error("[Auth] init", err);
-    }
-    ready = true;
-    notify();
-    updateUI();
-    if (user && typeof UserStore !== "undefined" && UserStore.ensureProfile) {
-      UserStore.ensureProfile({ privyId: getUserId(), displayName: getDisplayName() });
-    }
+    return loadSdk()
+      .then(function () {
+        if (privy.user && typeof privy.user.get === "function") {
+          return privy.user.get().then(function (res) {
+            user = res && res.user ? res.user : null;
+          });
+        }
+      })
+      .catch(function (err) {
+        console.error("[Auth] init error", err);
+      })
+      .then(function () {
+        ready = true;
+        notify();
+        updateUI();
+        if (user && global.UserStore && UserStore.ensureProfile) {
+          UserStore.ensureProfile({ privyId: getUserId(), displayName: getDisplayName() });
+        }
+      });
   }
 
-  async function login() {
+  function login() {
     if (!isConfigured()) {
       alert("Configura PRIVY_CONFIG.appId en js/auth.js (dashboard.privy.io)");
-      return null;
+      return Promise.resolve(null);
     }
-    try {
-      await loadSdk();
-      var email = window.prompt("Email to enter Robin's Arena:");
-      if (!email) return null;
-      email = email.trim();
-      if (!email) return null;
+    return loadSdk()
+      .then(function () {
+        var email = window.prompt("Email to enter Robin's Arena:");
+        if (!email) return null;
+        email = email.trim();
+        if (!email) return null;
 
-      if (!privy.auth || !privy.auth.email || !privy.auth.email.sendCode) {
-        alert("Enable Email login in Privy Dashboard → Authentication methods.");
-        return null;
-      }
+        if (!privy.auth || !privy.auth.email || !privy.auth.email.sendCode) {
+          alert("Enable Email login in Privy Dashboard → Authentication methods.");
+          return null;
+        }
 
-      await privy.auth.email.sendCode(email);
-      var code = window.prompt("Enter the code sent to " + email);
-      if (!code) return null;
-
-      var loginRes = await privy.auth.email.loginWithCode(email, code.trim());
-      user = loginRes && loginRes.user ? loginRes.user : loginRes;
-
-      notify();
-      updateUI();
-
-      if (typeof UserStore !== "undefined" && UserStore.ensureProfile) {
-        await UserStore.ensureProfile({
-          privyId: getUserId(),
-          displayName: getDisplayName()
+        return privy.auth.email.sendCode(email).then(function () {
+          var code = window.prompt("Enter the code sent to " + email);
+          if (!code) return null;
+          return privy.auth.email.loginWithCode(email, code.trim()).then(function (loginRes) {
+            user = loginRes && loginRes.user ? loginRes.user : loginRes;
+            notify();
+            updateUI();
+            if (global.UserStore && UserStore.ensureProfile) {
+              UserStore.ensureProfile({ privyId: getUserId(), displayName: getDisplayName() });
+            }
+            applyNameToLobby();
+            console.log("[Auth] logged in", getDisplayName());
+            return user;
+          });
         });
-      }
-      applyNameToLobby();
-      return user;
-    } catch (err) {
-      console.error("[Auth] login", err);
-      alert("Login failed: " + (err && err.message ? err.message : err));
-      return null;
-    }
+      })
+      .catch(function (err) {
+        console.error("[Auth] login failed", err);
+        alert("Login failed: " + (err && err.message ? err.message : err));
+        return null;
+      });
   }
 
-  async function logout() {
+  function logout() {
+    var p = Promise.resolve();
     try {
-      if (privy && privy.auth && privy.auth.logout) await privy.auth.logout();
+      if (privy && privy.auth && privy.auth.logout) p = privy.auth.logout();
     } catch (e) {}
-    user = null;
-    notify();
-    updateUI();
+    return Promise.resolve(p).then(function () {
+      user = null;
+      notify();
+      updateUI();
+    });
   }
 
   function updateUI() {
@@ -196,6 +207,6 @@ var Auth = (function () {
     }
   };
 
-  if (typeof window !== "undefined") window.Auth = api;
-  return api;
-})();
+  global.Auth = api;
+  console.log("[Auth] module attached, appId=", APP_ID);
+})(typeof window !== "undefined" ? window : this);
