@@ -555,26 +555,24 @@
   }
 
   function wireAuth() {
-    function tryInit() {
-      if (typeof window.Auth === "undefined") {
-        setTimeout(tryInit, 50);
-        return;
-      }
-      Auth.init();
-      var bl = $("btn-auth-login");
-      var bo = $("btn-auth-logout");
-      var br = $("btn-open-ranking");
-      var bc = $("btn-close-ranking");
-      if (bl) bl.addEventListener("click", function () { Auth.login(); });
-      if (bo) bo.addEventListener("click", function () { Auth.logout(); });
-      if (br) br.addEventListener("click", function () {
-        if (typeof Ranking !== "undefined") Ranking.open();
-      });
-      if (bc) bc.addEventListener("click", function () {
-        if (typeof Ranking !== "undefined") Ranking.close();
-      });
+    if (typeof window.Auth === "undefined") {
+      console.warn("[main] Auth not loaded yet, retry…");
+      setTimeout(wireAuth, 80);
+      return;
     }
-    tryInit();
+    Auth.init();
+    var bl = $("btn-auth-login");
+    var bo = $("btn-auth-logout");
+    var br = $("btn-open-ranking");
+    var bc = $("btn-close-ranking");
+    if (bl) bl.addEventListener("click", function () { Auth.login(); });
+    if (bo) bo.addEventListener("click", function () { Auth.logout(); });
+    if (br) br.addEventListener("click", function () {
+      if (typeof Ranking !== "undefined") Ranking.open();
+    });
+    if (bc) bc.addEventListener("click", function () {
+      if (typeof Ranking !== "undefined") Ranking.close();
+    });
   }
 
   window.addEventListener("DOMContentLoaded", function () {
