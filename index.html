@@ -13,7 +13,6 @@
 </head>
 <body>
 
-<!-- LOBBY SCREEN -->
 <div id="lobby-screen">
   <div class="lobby-container">
 
@@ -131,32 +130,24 @@
   </div>
 </div>
 
-<!-- GAME SCREEN -->
 <div id="game-screen" class="hidden">
   <canvas id="game-canvas"></canvas>
-
   <div id="touch-zone-move" class="touch-zone touch-zone--left"></div>
   <div id="touch-zone-aim" class="touch-zone touch-zone--right"></div>
-
   <div id="joystick-move" class="joystick"><div class="joystick-knob"></div></div>
   <div id="joystick-aim" class="joystick"><div class="joystick-knob"></div></div>
-
   <div id="weapon-bar" class="weapon-bar"></div>
   <button id="btn-ability" type="button" class="ability-btn" aria-label="Use ability">ULT</button>
   <button id="btn-fullscreen" type="button" class="btn-fullscreen" aria-label="Fullscreen" title="Fullscreen">⛶</button>
-
   <div id="countdown-overlay" class="countdown-overlay hidden">
     <div class="countdown-number" id="countdown-number">3</div>
   </div>
-
   <div id="kill-streak-banner" class="kill-streak-banner hidden">
     <span id="kill-streak-text">🔥 KILL STREAK x2</span>
   </div>
-
   <div id="damage-flash" class="damage-flash"></div>
 </div>
 
-<!-- Ranking panel -->
 <div id="ranking-panel" class="ranking-panel hidden">
   <div class="ranking-card">
     <div class="ranking-header">
@@ -168,7 +159,6 @@
   </div>
 </div>
 
-<!-- SCRIPTS -->
 <script src="js/pixel-character.js"></script>
 <script src="js/engine/camera.js"></script>
 <script src="js/engine/input.js"></script>
@@ -190,8 +180,8 @@
 <script src="js/game.js"></script>
 <script src="js/user-store.js"></script>
 <script src="js/ranking.js"></script>
-<script src="js/auth.js" type="module"></script>
-<script src="js/main.js"></script>
+<script src="js/auth.js?v=privy3"></script>
+<script src="js/main.js?v=privy3"></script>
 
 </body>
 </html>
