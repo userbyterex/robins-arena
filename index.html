@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=VT323&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="css/style.css" />
+<link rel="stylesheet" href="css/auth-ranking.css" />
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
@@ -19,10 +20,22 @@
     <div class="logo-area">
       <div class="logo-icon">🏹</div>
       <h1>ROBIN'S ARENA</h1>
-      <p class="subtitle">3-minute deathmatch · 2-4 players · no install</p>
+      <p class="subtitle">Conquest · capture zones · destroy HQ</p>
     </div>
 
-    <!-- Panel: Name + Class -->
+    <div id="auth-gate" class="auth-gate">
+      <p class="auth-gate-title">🔐 Sign in to play</p>
+      <p class="auth-gate-sub">Create your hunter profile with email</p>
+      <button type="button" id="btn-auth-login" class="btn-primary btn-glow">Login with Email</button>
+      <p id="auth-setup-msg" class="auth-setup-msg hidden">Set PRIVY_CONFIG in js/auth.js</p>
+    </div>
+
+    <div class="auth-bar" id="auth-bar">
+      <span id="auth-user-label" class="hidden"></span>
+      <button type="button" id="btn-auth-logout" class="btn-small hidden">Logout</button>
+      <button type="button" id="btn-open-ranking" class="btn-small">🏆 Ranking</button>
+    </div>
+
     <div id="panel-setup" class="lobby-panel active">
       <div class="name-row">
         <input type="text" id="player-name" placeholder="Your callsign" maxlength="12" value="" aria-label="Player callsign" autocomplete="off" />
@@ -73,13 +86,12 @@
       </div>
 
       <div class="button-row lobby-actions">
-        <button id="btn-solo" class="btn-primary btn-glow">⚔️ Solo vs Bots</button>
-        <button id="btn-host" class="btn-primary">🏕️ Host Camp</button>
-        <button id="btn-join-open" class="btn-secondary">🔗 Join Camp</button>
+        <button id="btn-solo" class="btn-primary btn-glow auth-locked" disabled>⚔️ Solo vs Bots</button>
+        <button id="btn-host" class="btn-primary auth-locked" disabled>🏕️ Host Camp</button>
+        <button id="btn-join-open" class="btn-secondary auth-locked" disabled>🔗 Join Camp</button>
       </div>
     </div>
 
-    <!-- Panel: Join -->
     <div id="panel-join" class="lobby-panel">
       <div class="panel-header">
         <button id="btn-join-back" class="btn-icon">←</button>
@@ -99,7 +111,6 @@
       <div id="join-error" class="error-msg"></div>
     </div>
 
-    <!-- Panel: Lobby (Host/Joined) -->
     <div id="panel-lobby" class="lobby-panel">
       <div class="panel-header">
         <button id="btn-lobby-back" class="btn-icon">←</button>
@@ -132,6 +143,7 @@
 
   <div id="weapon-bar" class="weapon-bar"></div>
   <button id="btn-ability" type="button" class="ability-btn" aria-label="Use ability">ULT</button>
+  <button id="btn-fullscreen" type="button" class="btn-fullscreen" aria-label="Fullscreen" title="Fullscreen">⛶</button>
 
   <div id="countdown-overlay" class="countdown-overlay hidden">
     <div class="countdown-number" id="countdown-number">3</div>
@@ -142,6 +154,18 @@
   </div>
 
   <div id="damage-flash" class="damage-flash"></div>
+</div>
+
+<!-- Ranking panel -->
+<div id="ranking-panel" class="ranking-panel hidden">
+  <div class="ranking-card">
+    <div class="ranking-header">
+      <span>🏆 Ranking</span>
+      <button type="button" id="btn-close-ranking" class="btn-icon">✕</button>
+    </div>
+    <p id="ranking-you" class="ranking-you"></p>
+    <ul id="ranking-list" class="ranking-list"></ul>
+  </div>
 </div>
 
 <!-- SCRIPTS -->
@@ -164,6 +188,9 @@
 <script src="js/hud.js"></script>
 <script src="js/ui-weapon-bar.js"></script>
 <script src="js/game.js"></script>
+<script src="js/user-store.js"></script>
+<script src="js/ranking.js"></script>
+<script src="js/auth.js" type="module"></script>
 <script src="js/main.js"></script>
 
 </body>
