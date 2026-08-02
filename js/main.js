@@ -1,5 +1,5 @@
 /**
- * main.js — Lobby + launchGame (sin overlay debug).
+ * main.js — Lobby + launchGame + Privy required.
  */
 (function () {
   "use strict";
@@ -131,6 +131,9 @@
 
   function getName() {
     var n = $("player-name") ? $("player-name").value.trim() : "";
+    if (!n && typeof Auth !== "undefined" && Auth.isAuthenticated && Auth.isAuthenticated()) {
+      n = Auth.getDisplayName() || "";
+    }
     if (!n) n = "Hunter" + Math.floor(Math.random() * 999);
     return n.substring(0, 12);
   }
@@ -198,7 +201,8 @@
       colorIndex: 0,
       team: 0,
       classId: selectedClass,
-      appearance: Object.assign({}, appearance)
+      appearance: Object.assign({}, appearance),
+      privyId: (typeof Auth !== "undefined" && Auth.getUserId) ? Auth.getUserId() : null
     };
   }
 
@@ -356,9 +360,12 @@
     if (btn) btn.classList.add("hidden");
     var err = $("join-error");
     if (err) err.textContent = "";
+
+    if (typeof Auth !== "undefined" && Auth.updateUI) Auth.updateUI();
   }
 
   function startSolo() {
+    if (typeof Auth !== "undefined" && Auth.requireAuth && !Auth.requireAuth()) return;
     isSolo = true;
     isHost = true;
     var cfg = buildLocalConfig();
@@ -374,6 +381,7 @@
   }
 
   function startHost() {
+    if (typeof Auth !== "undefined" && Auth.requireAuth && !Auth.requireAuth()) return;
     isHost = true;
     isSolo = false;
     var cfg = buildLocalConfig();
@@ -413,6 +421,7 @@
   }
 
   function openJoinPanel() {
+    if (typeof Auth !== "undefined" && Auth.requireAuth && !Auth.requireAuth()) return;
     showPanel("panel-join");
     refreshCampList();
   }
@@ -442,6 +451,7 @@
   }
 
   function confirmJoin() {
+    if (typeof Auth !== "undefined" && Auth.requireAuth && !Auth.requireAuth()) return;
     var code = ($("input-code") ? $("input-code").value : "").toUpperCase().trim();
     var errEl = $("join-error");
     if (!code || code.length !== 4) {
@@ -544,9 +554,33 @@
     if (e.key === "Escape" && gameRunning) backToLobby();
   }
 
+  function wireAuth() {
+    function tryInit() {
+      if (typeof window.Auth === "undefined") {
+        setTimeout(tryInit, 50);
+        return;
+      }
+      Auth.init();
+      var bl = $("btn-auth-login");
+      var bo = $("btn-auth-logout");
+      var br = $("btn-open-ranking");
+      var bc = $("btn-close-ranking");
+      if (bl) bl.addEventListener("click", function () { Auth.login(); });
+      if (bo) bo.addEventListener("click", function () { Auth.logout(); });
+      if (br) br.addEventListener("click", function () {
+        if (typeof Ranking !== "undefined") Ranking.open();
+      });
+      if (bc) bc.addEventListener("click", function () {
+        if (typeof Ranking !== "undefined") Ranking.close();
+      });
+    }
+    tryInit();
+  }
+
   window.addEventListener("DOMContentLoaded", function () {
     initCharacterCreator();
     initClassPicker();
+    wireAuth();
 
     if ($("btn-solo")) $("btn-solo").addEventListener("click", startSolo);
     if ($("btn-host")) $("btn-host").addEventListener("click", startHost);
