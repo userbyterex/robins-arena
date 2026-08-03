@@ -1,5 +1,5 @@
 /**
- * auth.js — Privy REQUIRED (classic script)
+ * auth.js — Privy email OTP integrated in lobby UI
  * App ID: cmsbqsb7s01rx0djo13n8wy9b
  */
 (function (global) {
@@ -12,6 +12,7 @@
   var user = null;
   var ready = false;
   var listeners = [];
+  var pendingEmail = "";
 
   function notify() {
     for (var i = 0; i < listeners.length; i++) {
@@ -29,9 +30,7 @@
   }
 
   function isConfigured() {
-    var ok = typeof APP_ID === "string" && APP_ID.length > 10 && APP_ID.indexOf("YOUR_") !== 0;
-    console.log("[Auth] isConfigured", ok, "appId=", APP_ID);
-    return ok;
+    return typeof APP_ID === "string" && APP_ID.length > 10 && APP_ID.indexOf("YOUR_") !== 0;
   }
 
   function getDisplayName() {
@@ -50,6 +49,29 @@
     return user && user.id ? user.id : null;
   }
 
+  function setMsg(text, isError) {
+    var el = document.getElementById("auth-msg");
+    if (!el) return;
+    el.textContent = text || "";
+    el.classList.toggle("error", !!isError);
+  }
+
+  function showEmailStep() {
+    var a = document.getElementById("auth-step-email");
+    var b = document.getElementById("auth-step-code");
+    if (a) a.classList.remove("hidden");
+    if (b) b.classList.add("hidden");
+  }
+
+  function showCodeStep(email) {
+    var a = document.getElementById("auth-step-email");
+    var b = document.getElementById("auth-step-code");
+    var shown = document.getElementById("auth-email-shown");
+    if (a) a.classList.add("hidden");
+    if (b) b.classList.remove("hidden");
+    if (shown) shown.textContent = email;
+  }
+
   function loadSdk() {
     if (privy) return Promise.resolve(privy);
     return import("https://esm.sh/@privy-io/js-sdk-core@0.68.5").then(function (mod) {
@@ -66,90 +88,8 @@
     });
   }
 
-  function init() {
-    console.log("[Auth] init start");
-    if (!isConfigured()) {
-      ready = true;
-      notify();
-      updateUI();
-      return Promise.resolve();
-    }
-    return loadSdk()
-      .then(function () {
-        if (privy.user && typeof privy.user.get === "function") {
-          return privy.user.get().then(function (res) {
-            user = res && res.user ? res.user : null;
-          });
-        }
-      })
-      .catch(function (err) {
-        console.error("[Auth] init error", err);
-      })
-      .then(function () {
-        ready = true;
-        notify();
-        updateUI();
-        if (user && global.UserStore && UserStore.ensureProfile) {
-          UserStore.ensureProfile({ privyId: getUserId(), displayName: getDisplayName() });
-        }
-      });
-  }
-
-  function login() {
-    if (!isConfigured()) {
-      alert("Configura PRIVY_CONFIG.appId en js/auth.js (dashboard.privy.io)");
-      return Promise.resolve(null);
-    }
-    return loadSdk()
-      .then(function () {
-        var email = window.prompt("Email to enter Robin's Arena:");
-        if (!email) return null;
-        email = email.trim();
-        if (!email) return null;
-
-        if (!privy.auth || !privy.auth.email || !privy.auth.email.sendCode) {
-          alert("Enable Email login in Privy Dashboard → Authentication methods.");
-          return null;
-        }
-
-        return privy.auth.email.sendCode(email).then(function () {
-          var code = window.prompt("Enter the code sent to " + email);
-          if (!code) return null;
-          return privy.auth.email.loginWithCode(email, code.trim()).then(function (loginRes) {
-            user = loginRes && loginRes.user ? loginRes.user : loginRes;
-            notify();
-            updateUI();
-            if (global.UserStore && UserStore.ensureProfile) {
-              UserStore.ensureProfile({ privyId: getUserId(), displayName: getDisplayName() });
-            }
-            applyNameToLobby();
-            console.log("[Auth] logged in", getDisplayName());
-            return user;
-          });
-        });
-      })
-      .catch(function (err) {
-        console.error("[Auth] login failed", err);
-        alert("Login failed: " + (err && err.message ? err.message : err));
-        return null;
-      });
-  }
-
-  function logout() {
-    var p = Promise.resolve();
-    try {
-      if (privy && privy.auth && privy.auth.logout) p = privy.auth.logout();
-    } catch (e) {}
-    return Promise.resolve(p).then(function () {
-      user = null;
-      notify();
-      updateUI();
-    });
-  }
-
   function updateUI() {
     var gate = document.getElementById("auth-gate");
-    var btnLogin = document.getElementById("btn-auth-login");
     var btnLogout = document.getElementById("btn-auth-logout");
     var label = document.getElementById("auth-user-label");
     var setupMsg = document.getElementById("auth-setup-msg");
@@ -157,7 +97,6 @@
     var configured = isConfigured();
 
     if (gate) gate.classList.toggle("hidden", authed);
-    if (btnLogin) btnLogin.classList.toggle("hidden", authed);
     if (btnLogout) btnLogout.classList.toggle("hidden", !authed);
     if (label) {
       label.textContent = authed ? ("👤 " + (getDisplayName() || "Hunter")) : "";
@@ -181,6 +120,181 @@
     if (name) input.value = name;
   }
 
+  function init() {
+    console.log("[Auth] init", APP_ID);
+    if (!isConfigured()) {
+      ready = true;
+      notify();
+      updateUI();
+      return Promise.resolve();
+    }
+    return loadSdk()
+      .then(function () {
+        if (privy.user && typeof privy.user.get === "function") {
+          return privy.user.get().then(function (res) {
+            user = res && res.user ? res.user : null;
+          });
+        }
+      })
+      .catch(function (err) {
+        console.error("[Auth] init error", err);
+        setMsg("Auth init issue — try Send code", true);
+      })
+      .then(function () {
+        ready = true;
+        notify();
+        updateUI();
+        if (user && global.UserStore && UserStore.ensureProfile) {
+          UserStore.ensureProfile({ privyId: getUserId(), displayName: getDisplayName() });
+        }
+        if (user) applyNameToLobby();
+      });
+  }
+
+  function sendCode() {
+    if (!isConfigured()) {
+      setMsg("Missing App ID", true);
+      return Promise.resolve(null);
+    }
+    var input = document.getElementById("auth-email");
+    var email = input ? input.value.trim() : "";
+    if (!email || email.indexOf("@") < 1) {
+      setMsg("Enter a valid email", true);
+      return Promise.resolve(null);
+    }
+
+    var sendBtn = document.getElementById("btn-auth-send");
+    if (sendBtn) sendBtn.disabled = true;
+    setMsg("Sending code…");
+    pendingEmail = email;
+
+    return loadSdk()
+      .then(function () {
+        if (!privy.auth || !privy.auth.email || !privy.auth.email.sendCode) {
+          setMsg("Enable Email login in Privy Dashboard", true);
+          return null;
+        }
+        return privy.auth.email.sendCode(email).then(function () {
+          showCodeStep(email);
+          setMsg("Open your email, copy the code, come back here. Keep this tab open.");
+          var codeInput = document.getElementById("auth-code");
+          if (codeInput) {
+            codeInput.value = "";
+            setTimeout(function () { codeInput.focus(); }, 100);
+          }
+        });
+      })
+      .catch(function (err) {
+        console.error("[Auth] sendCode", err);
+        setMsg("Send failed: " + (err && err.message ? err.message : String(err)), true);
+      })
+      .then(function () {
+        if (sendBtn) sendBtn.disabled = false;
+      });
+  }
+
+  function verifyCode() {
+    var codeInput = document.getElementById("auth-code");
+    var code = codeInput ? codeInput.value.trim() : "";
+    if (!pendingEmail) {
+      showEmailStep();
+      setMsg("Enter email first", true);
+      return Promise.resolve(null);
+    }
+    if (!code) {
+      setMsg("Enter the code from your email", true);
+      return Promise.resolve(null);
+    }
+
+    var verifyBtn = document.getElementById("btn-auth-verify");
+    if (verifyBtn) verifyBtn.disabled = true;
+    setMsg("Verifying…");
+
+    return loadSdk()
+      .then(function () {
+        return privy.auth.email.loginWithCode(pendingEmail, code);
+      })
+      .then(function (loginRes) {
+        user = loginRes && loginRes.user ? loginRes.user : loginRes;
+        notify();
+        updateUI();
+        if (global.UserStore && UserStore.ensureProfile) {
+          UserStore.ensureProfile({ privyId: getUserId(), displayName: getDisplayName() });
+        }
+        applyNameToLobby();
+        setMsg("Welcome, " + (getDisplayName() || "Hunter") + "!");
+        console.log("[Auth] logged in", getDisplayName());
+        return user;
+      })
+      .catch(function (err) {
+        console.error("[Auth] verify", err);
+        setMsg("Invalid or expired code. Try again.", true);
+        return null;
+      })
+      .then(function (result) {
+        if (verifyBtn) verifyBtn.disabled = false;
+        return result;
+      });
+  }
+
+  function login() {
+    var gate = document.getElementById("auth-gate");
+    if (gate) gate.classList.remove("hidden");
+    showEmailStep();
+    setMsg("Enter your email to continue");
+    var input = document.getElementById("auth-email");
+    if (input) input.focus();
+    return Promise.resolve(null);
+  }
+
+  function logout() {
+    var p = Promise.resolve();
+    try {
+      if (privy && privy.auth && privy.auth.logout) p = privy.auth.logout();
+    } catch (e) {}
+    return Promise.resolve(p).then(function () {
+      user = null;
+      pendingEmail = "";
+      showEmailStep();
+      setMsg("");
+      notify();
+      updateUI();
+    });
+  }
+
+  function wireForm() {
+    var sendBtn = document.getElementById("btn-auth-send");
+    var verifyBtn = document.getElementById("btn-auth-verify");
+    var backBtn = document.getElementById("btn-auth-back-email");
+    var emailInput = document.getElementById("auth-email");
+    var codeInput = document.getElementById("auth-code");
+
+    if (sendBtn) sendBtn.addEventListener("click", function () { sendCode(); });
+    if (verifyBtn) verifyBtn.addEventListener("click", function () { verifyCode(); });
+    if (backBtn) {
+      backBtn.addEventListener("click", function () {
+        showEmailStep();
+        setMsg("");
+      });
+    }
+    if (emailInput) {
+      emailInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          sendCode();
+        }
+      });
+    }
+    if (codeInput) {
+      codeInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          verifyCode();
+        }
+      });
+    }
+  }
+
   onChange(function (s) {
     if (s.authenticated) applyNameToLobby();
   });
@@ -189,6 +303,8 @@
     init: init,
     login: login,
     logout: logout,
+    sendCode: sendCode,
+    verifyCode: verifyCode,
     onChange: onChange,
     getUser: function () { return user; },
     getUserId: getUserId,
@@ -199,8 +315,8 @@
     updateUI: updateUI,
     requireAuth: function () {
       if (!user) {
-        alert("Login required to play Robin's Arena.");
         login();
+        setMsg("Login required to play", true);
         return false;
       }
       return true;
@@ -208,5 +324,11 @@
   };
 
   global.Auth = api;
-  console.log("[Auth] module attached, appId=", APP_ID);
+  console.log("[Auth] ready, appId=", APP_ID);
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireForm);
+  } else {
+    wireForm();
+  }
 })(typeof window !== "undefined" ? window : this);
