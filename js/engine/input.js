@@ -1,23 +1,15 @@
 /**
- * engine/input.js — Unified input: keyboard, mouse, touch, ability.
- * Mobile landscape ready. Attack works with aim joystick.
+ * engine/input.js — Keyboard + mouse + touch → Game.setInput
  */
-window.Input = {
-  touchMove: { dx: 0, dy: 0 },
-  touchAim: { angle: 0, active: false },
-  setTouchMove: function (dx, dy) { this.touchMove.dx = dx; this.touchMove.dy = dy; },
-  clearTouchMove: function () { this.touchMove.dx = 0; this.touchMove.dy = 0; },
-  setTouchAim: function (angle, active) { this.touchAim.angle = angle; this.touchAim.active = !!active; },
-  clearTouchAim: function () { this.touchAim.active = false; }
-};
-
 var InputManager = (function () {
-  var keys = {};
-  var mouse = { x: 0, y: 0, down: false, rightDown: false };
+  console.log("[InputManager] loading…");
+
   var canvas = null;
   var callback = null;
-  var currentWeapon = "sword";
+  var keys = {};
+  var mouse = { x: 0, y: 0, down: false };
   var playerX = 0, playerY = 0;
+  var currentWeapon = "sword";
   var weaponIndex = 1;
   var WEAPON_LIST = ["knife", "sword", "axe", "bow", "crossbow"];
   var lastCallbackTime = 0;
@@ -25,69 +17,40 @@ var InputManager = (function () {
   function init(cvs, cb) {
     canvas = cvs;
     callback = cb;
-    bindEvents();
-    startLoop();
+    keys = {};
+    mouse = { x: 0, y: 0, down: false };
+
+    window.addEventListener("keydown", function (e) {
+      keys[e.code] = true;
+      if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].indexOf(e.code) >= 0) {
+        e.preventDefault();
+      }
+    });
+    window.addEventListener("keyup", function (e) {
+      keys[e.code] = false;
+    });
+
+    if (canvas) {
+      canvas.addEventListener("mousemove", function (e) {
+        var r = canvas.getBoundingClientRect();
+        mouse.x = e.clientX - r.left;
+        mouse.y = e.clientY - r.top;
+      });
+      canvas.addEventListener("mousedown", function () { mouse.down = true; });
+      canvas.addEventListener("mouseup", function () { mouse.down = false; });
+      canvas.addEventListener("mouseleave", function () { mouse.down = false; });
+      canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+      canvas.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false });
+      canvas.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
+    }
+
+    setInterval(update, 1000 / 60);
+    console.log("[InputManager] ready");
   }
 
   function setPlayerPos(x, y) {
     playerX = x;
     playerY = y;
-  }
-
-  function bindEvents() {
-    window.addEventListener("keydown", function (e) {
-      keys[e.code] = true;
-      if (e.code >= "Digit1" && e.code <= "Digit5") {
-        var idx = parseInt(e.code.replace("Digit", ""), 10) - 1;
-        if (idx >= 0 && idx < WEAPON_LIST.length) setWeapon(WEAPON_LIST[idx]);
-      }
-      if (e.code === "Space" || e.code === "KeyQ" || e.code === "KeyE") {
-        e.preventDefault();
-      }
-    });
-
-    window.addEventListener("keyup", function (e) {
-      keys[e.code] = false;
-    });
-
-    var rectCache = null;
-    function getRect() {
-      if (!rectCache || performance.now() - rectCache.time > 400) {
-        rectCache = { rect: canvas.getBoundingClientRect(), time: performance.now() };
-      }
-      return rectCache.rect;
-    }
-
-    canvas.addEventListener("mousemove", function (e) {
-      var rect = getRect();
-      mouse.x = e.clientX - rect.left;
-      mouse.y = e.clientY - rect.top;
-    });
-
-    canvas.addEventListener("mousedown", function (e) {
-      if (e.button === 0) mouse.down = true;
-      if (e.button === 2) mouse.rightDown = true;
-    });
-
-    canvas.addEventListener("mouseup", function (e) {
-      if (e.button === 0) mouse.down = false;
-      if (e.button === 2) mouse.rightDown = false;
-    });
-
-    canvas.addEventListener("contextmenu", function (e) {
-      e.preventDefault();
-    });
-
-    canvas.addEventListener("wheel", function (e) {
-      e.preventDefault();
-      var dir = e.deltaY > 0 ? 1 : -1;
-      weaponIndex = (weaponIndex + dir + WEAPON_LIST.length) % WEAPON_LIST.length;
-      setWeapon(WEAPON_LIST[weaponIndex]);
-    }, { passive: false });
-
-    // Prevent browser scroll/zoom while playing
-    canvas.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false });
-    canvas.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
   }
 
   function setWeapon(w) {
@@ -97,10 +60,6 @@ var InputManager = (function () {
     if (typeof WeaponBar !== "undefined" && WeaponBar.setActive) {
       WeaponBar.setActive(w);
     }
-  }
-
-  function startLoop() {
-    setInterval(update, 1000 / 60);
   }
 
   function update() {
@@ -115,7 +74,6 @@ var InputManager = (function () {
     if (keys["KeyA"] || keys["ArrowLeft"]) dx = -1;
     if (keys["KeyD"] || keys["ArrowRight"]) dx = 1;
 
-    // Touch move overrides keyboard when active
     if (window.Input && window.Input.touchMove) {
       if (window.Input.touchMove.dx !== 0 || window.Input.touchMove.dy !== 0) {
         dx = window.Input.touchMove.dx;
@@ -135,18 +93,16 @@ var InputManager = (function () {
       var worldMouse = Camera.screenToWorld(mouse.x, mouse.y);
       angle = Math.atan2(worldMouse.y - playerY, worldMouse.x - playerX);
     } else if (canvas) {
-      var cx = canvas.width / 2;
-      var cy = canvas.height / 2;
-      angle = Math.atan2(mouse.y - cy, mouse.x - cx);
+      angle = Math.atan2(mouse.y - canvas.height / 2, mouse.x - canvas.width / 2);
     }
 
-    var ultimate = false;
-    if (typeof AbilityInput !== "undefined" && AbilityInput.consume) {
-      ultimate = AbilityInput.consume();
-    }
-
-    // CRITICAL: attack on mobile = aim joystick beyond dead zone
     var attack = mouse.down || touchAimActive;
+
+    // Skills from AbilityInput (1/2/3 + Space / touch buttons)
+    var skills = { skill0: false, skill1: false, skill2: false, ultimate: false };
+    if (typeof AbilityInput !== "undefined" && AbilityInput.consumeSkills) {
+      skills = AbilityInput.consumeSkills();
+    }
 
     callback({
       dx: dx,
@@ -154,13 +110,12 @@ var InputManager = (function () {
       angle: angle,
       attack: attack,
       weapon: currentWeapon,
-      ultimate: ultimate
+      skill0: !!skills.skill0,
+      skill1: !!skills.skill1,
+      skill2: !!skills.skill2,
+      ultimate: !!skills.ultimate
     });
   }
 
-  return {
-    init: init,
-    setPlayerPos: setPlayerPos,
-    setWeapon: setWeapon
-  };
+  return { init: init, setPlayerPos: setPlayerPos, setWeapon: setWeapon };
 })();
