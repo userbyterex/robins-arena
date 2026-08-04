@@ -1,67 +1,134 @@
 /**
- * ability-input.js — Space / Q / E + big mobile ULT button.
- * Landscape-friendly, prevents accidental scroll.
+ * ability-input.js — Skill bar (3) + ULT, touch + keys 1/2/3/Space.
  */
-(function () {
-  var pressed = false;
-  var edge = false;
+var AbilityInput = (function () {
+  console.log("[AbilityInput] loading…");
 
-  window.addEventListener("keydown", function (e) {
-    if (e.code === "Space" || e.key === "q" || e.key === "Q" || e.key === "e" || e.key === "E") {
-      if (!e.repeat) edge = true;
-      pressed = true;
-      e.preventDefault();
+  var skillPressed = [false, false, false];
+  var ultPressed = false;
+  var barEl = null;
+  var buttons = [];
+  var ultBtn = null;
+  var localClassId = "warrior";
+  var cdUntil = [0, 0, 0];
+  var ultReady = false;
+
+  function ensureBar() {
+    barEl = document.getElementById("ability-bar");
+    if (!barEl) {
+      barEl = document.createElement("div");
+      barEl.id = "ability-bar";
+      barEl.className = "ability-bar";
+      var game = document.getElementById("game-screen");
+      if (game) game.appendChild(barEl);
+      else document.body.appendChild(barEl);
     }
-  });
-  window.addEventListener("keyup", function (e) {
-    if (e.code === "Space" || e.key === "q" || e.key === "Q" || e.key === "e" || e.key === "E") {
-      pressed = false;
-    }
-  });
+    barEl.innerHTML = "";
+    buttons = [];
 
-  document.addEventListener("DOMContentLoaded", function () {
-    var btn = document.getElementById("btn-ability");
-    if (!btn) return;
-
-    function down(e) {
-      if (e && e.preventDefault) e.preventDefault();
-      if (e && e.stopPropagation) e.stopPropagation();
-      pressed = true;
-      edge = true;
-      btn.classList.add("pressed");
-    }
-    function up(e) {
-      if (e && e.preventDefault) e.preventDefault();
-      pressed = false;
-      btn.classList.remove("pressed");
+    for (var i = 0; i < 3; i++) {
+      (function (idx) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "skill-btn";
+        btn.dataset.skill = String(idx);
+        btn.innerHTML = '<span class="skill-icon">?</span><span class="skill-cd"></span>';
+        function press(e) {
+          if (e) e.preventDefault();
+          skillPressed[idx] = true;
+        }
+        btn.addEventListener("touchstart", press, { passive: false });
+        btn.addEventListener("mousedown", press);
+        barEl.appendChild(btn);
+        buttons.push(btn);
+      })(i);
     }
 
-    // Prefer pointer events (covers mouse + touch)
-    btn.addEventListener("pointerdown", down, { passive: false });
-    btn.addEventListener("pointerup", up, { passive: false });
-    btn.addEventListener("pointercancel", up, { passive: false });
-    btn.addEventListener("pointerleave", up, { passive: false });
-
-    // Fallback touch
-    btn.addEventListener("touchstart", down, { passive: false });
-    btn.addEventListener("touchend", up, { passive: false });
-    btn.addEventListener("touchcancel", up, { passive: false });
-
-    btn.style.touchAction = "manipulation";
-    btn.style.webkitUserSelect = "none";
-    btn.style.userSelect = "none";
-  });
-
-  window.AbilityInput = {
-    consume: function () {
-      if (edge) {
-        edge = false;
-        return true;
+    ultBtn = document.getElementById("btn-ability");
+    if (ultBtn) {
+      ultBtn.classList.add("ult-btn");
+      function pressUlt(e) {
+        if (e) e.preventDefault();
+        ultPressed = true;
       }
-      return false;
-    },
-    isDown: function () {
-      return pressed;
+      ultBtn.addEventListener("touchstart", pressUlt, { passive: false });
+      ultBtn.addEventListener("mousedown", pressUlt);
     }
+  }
+
+  function setClass(classId) {
+    localClassId = classId || "warrior";
+    var cls = typeof getClass === "function" ? getClass(localClassId) : null;
+    if (!cls) return;
+    for (var i = 0; i < 3; i++) {
+      var sk = cls.skills && cls.skills[i];
+      if (buttons[i] && sk) {
+        buttons[i].querySelector(".skill-icon").textContent = sk.icon || "•";
+        buttons[i].title = sk.name + " — " + (sk.desc || "");
+      }
+    }
+    if (ultBtn && cls.ability) {
+      ultBtn.innerHTML = '<span class="ult-icon">' + (cls.ability.icon || "ULT") + "</span>";
+      ultBtn.title = cls.ability.name + " — " + (cls.ability.desc || "");
+    }
+  }
+
+  function setCooldowns(cds, ultimateCharge) {
+    var now = performance.now() / 1000;
+    for (var i = 0; i < 3; i++) {
+      cdUntil[i] = cds && cds[i] != null ? cds[i] : 0;
+      if (!buttons[i]) continue;
+      var left = Math.max(0, cdUntil[i] - now);
+      var cdEl = buttons[i].querySelector(".skill-cd");
+      if (left > 0.05) {
+        buttons[i].classList.add("on-cd");
+        if (cdEl) cdEl.textContent = left.toFixed(1);
+      } else {
+        buttons[i].classList.remove("on-cd");
+        if (cdEl) cdEl.textContent = "";
+      }
+    }
+    ultReady = (ultimateCharge || 0) >= 100;
+    if (ultBtn) {
+      ultBtn.classList.toggle("ult-ready", ultReady);
+      ultBtn.classList.toggle("ult-charging", !ultReady);
+    }
+  }
+
+  function consumeSkills() {
+    var out = {
+      skill0: skillPressed[0],
+      skill1: skillPressed[1],
+      skill2: skillPressed[2],
+      ultimate: ultPressed
+    };
+    skillPressed[0] = skillPressed[1] = skillPressed[2] = false;
+    ultPressed = false;
+    return out;
+  }
+
+  function onKeyDown(e) {
+    if (e.repeat) return;
+    if (e.code === "Digit1" || e.key === "1") skillPressed[0] = true;
+    if (e.code === "Digit2" || e.key === "2") skillPressed[1] = true;
+    if (e.code === "Digit3" || e.key === "3") skillPressed[2] = true;
+    if (e.code === "Space") {
+      e.preventDefault();
+      ultPressed = true;
+    }
+  }
+
+  function init() {
+    ensureBar();
+    window.addEventListener("keydown", onKeyDown);
+    setClass(localClassId);
+    console.log("[AbilityInput] ready");
+  }
+
+  return {
+    init: init,
+    setClass: setClass,
+    setCooldowns: setCooldowns,
+    consumeSkills: consumeSkills
   };
 })();
