@@ -1,5 +1,5 @@
 /**
- * engine/input.js — Keyboard + mouse + touch → Game.setInput
+ * engine/input.js — Keyboard + mouse + touch bridge for TouchControls
  */
 var InputManager = (function () {
   console.log("[InputManager] loading…");
@@ -10,9 +10,28 @@ var InputManager = (function () {
   var mouse = { x: 0, y: 0, down: false };
   var playerX = 0, playerY = 0;
   var currentWeapon = "sword";
-  var weaponIndex = 1;
-  var WEAPON_LIST = ["knife", "sword", "axe", "bow", "crossbow"];
   var lastCallbackTime = 0;
+
+  // Bridge used by touch-controls.js
+  window.Input = {
+    touchMove: { dx: 0, dy: 0 },
+    touchAim: { angle: 0, active: false },
+    setTouchMove: function (dx, dy) {
+      this.touchMove.dx = dx;
+      this.touchMove.dy = dy;
+    },
+    clearTouchMove: function () {
+      this.touchMove.dx = 0;
+      this.touchMove.dy = 0;
+    },
+    setTouchAim: function (angle, active) {
+      this.touchAim.angle = angle;
+      this.touchAim.active = !!active;
+    },
+    clearTouchAim: function () {
+      this.touchAim.active = false;
+    }
+  };
 
   function init(cvs, cb) {
     canvas = cvs;
@@ -45,7 +64,7 @@ var InputManager = (function () {
     }
 
     setInterval(update, 1000 / 60);
-    console.log("[InputManager] ready");
+    console.log("[InputManager] ready + Input bridge");
   }
 
   function setPlayerPos(x, y) {
@@ -54,12 +73,7 @@ var InputManager = (function () {
   }
 
   function setWeapon(w) {
-    currentWeapon = w;
-    weaponIndex = WEAPON_LIST.indexOf(w);
-    if (weaponIndex < 0) weaponIndex = 1;
-    if (typeof WeaponBar !== "undefined" && WeaponBar.setActive) {
-      WeaponBar.setActive(w);
-    }
+    currentWeapon = w || currentWeapon;
   }
 
   function update() {
@@ -74,6 +88,7 @@ var InputManager = (function () {
     if (keys["KeyA"] || keys["ArrowLeft"]) dx = -1;
     if (keys["KeyD"] || keys["ArrowRight"]) dx = 1;
 
+    // Touch joystick (from TouchControls → window.Input)
     if (window.Input && window.Input.touchMove) {
       if (window.Input.touchMove.dx !== 0 || window.Input.touchMove.dy !== 0) {
         dx = window.Input.touchMove.dx;
@@ -98,7 +113,6 @@ var InputManager = (function () {
 
     var attack = mouse.down || touchAimActive;
 
-    // Skills from AbilityInput (1/2/3 + Space / touch buttons)
     var skills = { skill0: false, skill1: false, skill2: false, ultimate: false };
     if (typeof AbilityInput !== "undefined" && AbilityInput.consumeSkills) {
       skills = AbilityInput.consumeSkills();
