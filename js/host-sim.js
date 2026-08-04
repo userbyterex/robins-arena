@@ -1,15 +1,14 @@
 /**
- * host-sim.js — COMPLETE (do not truncate). Cats + class ultimates + bots.
+ * host-sim.js — Class skill kits + cats + conquest.
  */
 var HostSim = (function () {
-  console.log("[HostSim] loading…");
+  console.log("[HostSim] loading skill kits…");
 
   var MATCH_DURATION = 480;
   var CAPTURE_TIME = 3.0;
   var NPC_PER_ZONE = 3;
   var SPAWN_INTERVAL = 5.0;
   var HQ_MAX_HP = 280;
-  var RAM_DMG = 22;
   var RESPAWN = 4;
   var PR = 14;
   var BASE_SPEED = 210;
@@ -45,6 +44,8 @@ var HostSim = (function () {
     outpost: [CATS.ranger, CATS.warrior, CATS.ram]
   };
 
+  function nowSec() { return performance.now() / 1000; }
+
   function defSpawns() {
     if (typeof GameMap !== "undefined" && GameMap.SPAWNS) return GameMap.SPAWNS;
     return [
@@ -69,513 +70,698 @@ var HostSim = (function () {
       { id: "t2", x: 1340, y: 450, range: 150, damage: 12, cooldown: 1.2, team: 1 }
     ];
   }
-  function move(x, y, dx, dy, r) {
-    if (typeof GameMap !== "undefined" && GameMap.tryMove) return GameMap.tryMove(x, y, dx, dy, r);
-    if (typeof GameMap !== "undefined" && GameMap.resolveCircleCollision) return GameMap.resolveCircleCollision(x + dx, y + dy, r);
-    return { x: x + dx, y: y + dy };
-  }
+
   function clsOf(id) {
-    if (typeof getClass === "function") try { return getClass(id); } catch (e) {}
-    if (typeof CLASSES !== "undefined" && CLASSES[id]) return CLASSES[id];
-    return { maxHp: 100, speedMul: 1, weapon: "sword", ability: { id: "whirlwind", name: "Whirlwind", damage: 32, range: 78 } };
-  }
-  function ultOf(cls) {
-    if (!cls || !cls.ability) return null;
-    var a = cls.ability;
-    var id = a.id;
-    if (typeof resolveAbilityId === "function") id = resolveAbilityId(id);
-    if (id === "whirlwind" || id === "bash") return { id: "whirlwind", cost: 100, damage: a.damage || 32, radius: a.range || 78, shield: 20, stun: a.stun || 0.8 };
-    if (id === "arrow_storm" || id === "volley") return { id: "arrow_storm", cost: 100, shots: a.shots || 7, spread: a.spread || 0.42, damage: a.damage || 18, speed: 520 };
-    if (id === "arcane_blast" || id === "nova") return { id: "arcane_blast", cost: 100, radius: a.radius || 120, damage: a.damage || 42, push: 40 };
-    if (id === "natures_blessing" || id === "restore") return { id: "natures_blessing", cost: 100, heal: a.heal || 50, radius: a.radius || 100, shield: a.shield || 25 };
-    return null;
+    if (typeof getClass === "function") return getClass(id);
+    return { id: id || "warrior", maxHp: 100, speedMul: 1, skills: [], ability: null, weapon: "sword" };
   }
 
-  function init(configs) {
-    console.log("[HostSim] init", (configs && configs.length) || 0);
-    players = new Map();
-    projectiles = [];
-    npcs = [];
-    inputs = new Map();
-    spawns = new Map();
-    killfeed = [];
-    matchStart = performance.now() / 1000;
-    matchOver = false;
-    winnerName = null;
-    events = [];
-    npcId = 1;
-    botTimer = {};
-
-    var S = defSpawns();
-    flags = defFlags().map(function (f) {
-      var hq = f.id === "camp_hq" || f.id === "castle_hq";
-      return {
-        id: f.id, name: f.name, x: f.x, y: f.y, radius: f.radius,
-        team: f.team != null ? f.team : -1, progress: 0, capturingTeam: -1,
-        structureHp: hq ? HQ_MAX_HP : null, structureMax: hq ? HQ_MAX_HP : null
-      };
-    });
-    towerCd = {};
-    defTowers().forEach(function (t) { towerCd[t.id] = 0; });
-    zoneTimer = { nymphs: 0, village: 0, outpost: 0 };
-
-    var list = (configs && configs.length) ? configs : [{ id: "solo", name: "Solo", team: 0, classId: "warrior" }];
-    list.forEach(function (cfg, i) {
-      var team = cfg.team != null ? cfg.team : (i % 2);
-      var classId = cfg.classId || "warrior";
-      var c = clsOf(classId);
-      var teamS = S.filter(function (s) { return s.team === team; });
-      var sp = teamS[i % Math.max(1, teamS.length)] || S[0];
-      var p = {
-        id: cfg.id, name: cfg.name || "Player", colorIndex: i % 4,
-        x: sp.x, y: sp.y, angle: 0, hp: c.maxHp || 100, maxHp: c.maxHp || 100,
-        weapon: c.weapon || "sword", alive: true, score: 0,
-        lastAttackAt: -999, respawnAt: 0, lastHitFlashAt: -999, lastAttackAnimAt: -999,
-        team: team, classId: classId, speedMul: c.speedMul || 1,
-        abilityCdUntil: 0, stunUntil: 0, ultimateCharge: 0, shield: 0,
-        appearance: cfg.appearance || null
-      };
-      players.set(cfg.id, p);
-      spawns.set(cfg.id, { team: team, x: sp.x, y: sp.y });
-      console.log("[HostSim] player", cfg.id, classId, "team", team);
-    });
-    console.log("[HostSim] ready players", players.size);
+  function weaponOf(id) {
+    if (typeof WEAPONS !== "undefined" && WEAPONS[id]) return WEAPONS[id];
+    return { id: id || "sword", type: "melee", damage: 18, range: 42, cooldown: 0.55, angle: 70 };
   }
 
-  function setInput(id, input) { inputs.set(id, input); }
-  function markDisconnected(id) {
-    var p = players.get(id);
-    if (!p) return;
-    p.alive = false; p.hp = 0; p.respawnAt = Infinity;
-    inputs.delete(id);
+  function angleDiff(a, b) {
+    var d = Math.abs(a - b) % (Math.PI * 2);
+    return d > Math.PI ? Math.PI * 2 - d : d;
   }
 
-  function midFlags() {
-    return flags.filter(function (f) {
-      return f.id === "nymphs" || f.id === "village" || f.id === "outpost";
+  function playersArr() {
+    return Array.from(players.values());
+  }
+
+  function alliesOf(p) {
+    return playersArr().filter(function (o) {
+      return o.alive && o.team === p.team && o.id !== p.id;
     });
   }
 
-  function damage(unit, dmg, now, attacker) {
-    if (!unit || !unit.alive) return;
-    var d = dmg;
+  function enemiesOf(p) {
+    return playersArr().filter(function (o) {
+      return o.alive && o.team !== p.team;
+    });
+  }
+
+  function nearestInCone(list, p, range, halfAngle) {
+    var best = null;
+    var bestD = range + 1;
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i];
+      var dx = t.x - p.x;
+      var dy = t.y - p.y;
+      var d = Math.hypot(dx, dy);
+      if (d > range) continue;
+      if (halfAngle != null && angleDiff(Math.atan2(dy, dx), p.angle) > halfAngle) continue;
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    return best;
+  }
+
+  function nearestInRange(list, p, range) {
+    return nearestInCone(list, p, range, null);
+  }
+
+  function pushProj(owner, angle, speed, damage, ttl, radius, extra) {
+    var pr = {
+      id: "p" + Math.random().toString(36).slice(2, 8),
+      ownerId: owner.id,
+      team: owner.team,
+      x: owner.x + Math.cos(angle) * 18,
+      y: owner.y + Math.sin(angle) * 18,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      damage: damage,
+      ttl: ttl || 1.2,
+      radius: radius || 5,
+      weaponId: (extra && extra.weaponId) || "bow",
+      burnDps: extra && extra.burnDps,
+      burnDuration: extra && extra.burnDuration,
+      guaranteed: !!(extra && extra.guaranteed),
+      slowMul: extra && extra.slowMul,
+      slowDuration: extra && extra.slowDuration
+    };
+    projectiles.push(pr);
+    return pr;
+  }
+
+  function aoeDamage(x, y, radius, amount, attacker, onlyEnemies) {
+    var list = playersArr().concat(npcs);
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i];
+      if (!t.alive) continue;
+      if (onlyEnemies && t.team === attacker.team) continue;
+      if (t.id === attacker.id) continue;
+      if (Math.hypot(t.x - x, t.y - y) <= radius + PR) {
+        hurt(t, amount, attacker);
+      }
+    }
+  }
+
+  function hurt(unit, d, attacker) {
+    if (!unit || !unit.alive || d <= 0) return false;
+    var n = nowSec();
+
+    // Guard / block
+    if (unit.blockUntil && n < unit.blockUntil) {
+      events.push({ kind: "block", x: unit.x, y: unit.y, targetId: unit.id });
+      return false;
+    }
+
+    // Dodge
+    var dodge = unit.dodgeChance || 0;
+    if (unit.dodgeBoostUntil && n < unit.dodgeBoostUntil) {
+      dodge = Math.max(dodge, unit.dodgeBoost || 0.5);
+    }
+    if (unit.teamAegisUntil && n < unit.teamAegisUntil) {
+      dodge = Math.max(dodge, unit.teamAegisDodge || 0.5);
+    }
+    if (dodge > 0 && Math.random() < dodge) {
+      events.push({ kind: "dodge", x: unit.x, y: unit.y, targetId: unit.id });
+      return false;
+    }
+
+    // Damage reduce (ward)
+    if (unit.wardUntil && n < unit.wardUntil && unit.wardReduce) {
+      d = d * (1 - unit.wardReduce);
+    }
+
     if (unit.shield > 0) {
       var ab = Math.min(unit.shield, d);
       unit.shield -= ab;
       d -= ab;
     }
+    if (d <= 0) return false;
+
     unit.hp = Math.max(0, unit.hp - d);
-    unit.lastHitFlashAt = now;
-    events.push({ kind: "hit", x: unit.x, y: unit.y });
+    unit.lastHitFlashAt = n;
     unit.ultimateCharge = Math.min(ULT.max, (unit.ultimateCharge || 0) + d * ULT.take);
-    if (attacker && attacker.id !== unit.id) {
+    if (attacker && attacker.ultimateCharge != null) {
       attacker.ultimateCharge = Math.min(ULT.max, (attacker.ultimateCharge || 0) + d * ULT.deal);
     }
+
     if (unit.hp <= 0) {
       unit.alive = false;
-      if (unit.respawnAt !== undefined) unit.respawnAt = now + RESPAWN;
-      events.push({ kind: "death", x: unit.x, y: unit.y });
-      if (attacker && attacker.score != null) {
+      unit.respawnAt = n + RESPAWN;
+      if (attacker) {
         attacker.score = (attacker.score || 0) + 1;
         killfeed.unshift({
           killerName: attacker.name || "?",
           targetName: unit.name || "?",
           weaponId: attacker.weapon || "sword",
-          at: now
+          at: n
         });
-        killfeed = killfeed.slice(0, 6);
+        if (killfeed.length > 6) killfeed.length = 6;
+      }
+      events.push({ kind: "kill", x: unit.x, y: unit.y, targetId: unit.id, attackerId: attacker && attacker.id });
+      return true;
+    }
+    return false;
+  }
+
+  function canUseSkill(p, idx, n) {
+    if (!p.skillCd) p.skillCd = [0, 0, 0];
+    return n >= (p.skillCd[idx] || 0);
+  }
+
+  function setSkillCd(p, idx, cd) {
+    if (!p.skillCd) p.skillCd = [0, 0, 0];
+    p.skillCd[idx] = nowSec() + cd;
+  }
+
+  function useSkill(p, idx, n) {
+    var cls = clsOf(p.classId);
+    var sk = cls.skills && cls.skills[idx];
+    if (!sk || !canUseSkill(p, idx, n)) return;
+    if (p.stunUntil && n < p.stunUntil) return;
+
+    setSkillCd(p, idx, sk.cooldown || 3);
+    events.push({ kind: "skill", skillId: sk.id, classId: p.classId, x: p.x, y: p.y, angle: p.angle });
+
+    // —— WARRIOR ——
+    if (sk.id === "thrust") {
+      var w = weaponOf(p.weapon);
+      var dmg = Math.round((w.damage || 18) * (sk.damageMul || 1.65));
+      var t = nearestInCone(enemiesOf(p).concat(npcs.filter(function (x) { return x.alive && x.team !== p.team; })), p, sk.range || 48, 0.55);
+      if (t) hurt(t, dmg, p);
+      p.lastAttackAnimAt = n;
+    } else if (sk.id === "guard") {
+      p.blockUntil = n + (sk.duration || 1.25);
+      events.push({ kind: "guard", x: p.x, y: p.y, targetId: p.id });
+    } else if (sk.id === "cleave") {
+      aoeDamage(p.x, p.y, sk.range || 62, sk.damage || 30, p, true);
+      p.lastAttackAnimAt = n;
+    }
+
+    // —— RANGER ——
+    else if (sk.id === "precise_shot") {
+      pushProj(p, p.angle, 480, sk.damage || 38, 1.4, 6, {
+        weaponId: "bow", guaranteed: true
+      });
+    } else if (sk.id === "arrow_rain") {
+      var shots = sk.shots || 6;
+      var spread = sk.spread || 0.55;
+      for (var i = 0; i < shots; i++) {
+        var a = p.angle - spread / 2 + (spread * i) / Math.max(1, shots - 1);
+        pushProj(p, a, 400, sk.damage || 14, 1.1, 4, { weaponId: "bow" });
+      }
+    } else if (sk.id === "sidestep") {
+      p.dodgeBoostUntil = n + (sk.duration || 0.9);
+      p.dodgeBoost = sk.dodgeBoost || 0.55;
+    }
+
+    // —— MONK ——
+    else if (sk.id === "heal_front") {
+      var ally = nearestInCone(alliesOf(p), p, sk.range || 90, 0.9);
+      if (!ally) ally = p;
+      var heal = Math.round((ally.maxHp || 100) * (sk.healPct || 0.08));
+      ally.hp = Math.min(ally.maxHp || 100, ally.hp + heal);
+      p.ultimateCharge = Math.min(ULT.max, (p.ultimateCharge || 0) + heal * ULT.heal);
+      events.push({ kind: "heal", x: ally.x, y: ally.y, targetId: ally.id, amount: heal });
+    } else if (sk.id === "ward") {
+      var wardTarget = nearestInCone(alliesOf(p), p, sk.range || 100, 1.0) || p;
+      wardTarget.wardUntil = n + (sk.duration || 2);
+      wardTarget.wardReduce = sk.damageReduce || 0.2;
+      events.push({ kind: "ward", x: wardTarget.x, y: wardTarget.y, targetId: wardTarget.id });
+    } else if (sk.id === "group_heal") {
+      var rad = sk.radius || 140;
+      var group = [p].concat(alliesOf(p));
+      for (var g = 0; g < group.length; g++) {
+        var al = group[g];
+        if (Math.hypot(al.x - p.x, al.y - p.y) > rad) continue;
+        var h = Math.round((al.maxHp || 100) * (sk.healPct || 0.1));
+        al.hp = Math.min(al.maxHp || 100, al.hp + h);
+        events.push({ kind: "heal", x: al.x, y: al.y, targetId: al.id, amount: h });
+      }
+    }
+
+    // —— MAGE ——
+    else if (sk.id === "energy_bolt") {
+      pushProj(p, p.angle, sk.speed || 420, sk.damage || 22, 1.0, 6, { weaponId: "arcane" });
+    } else if (sk.id === "fire_rain") {
+      var fx = p.x + Math.cos(p.angle) * (sk.range || 160);
+      var fy = p.y + Math.sin(p.angle) * (sk.range || 160);
+      aoeDamage(fx, fy, sk.radius || 70, sk.damage || 28, p, true);
+      events.push({ kind: "fire_rain", x: fx, y: fy, radius: sk.radius || 70 });
+    } else if (sk.id === "frost") {
+      var ft = nearestInCone(enemiesOf(p), p, sk.range || 220, 0.5);
+      if (ft) {
+        hurt(ft, sk.damage || 12, p);
+        ft.slowUntil = n + (sk.duration || 2.5);
+        ft.slowMul = sk.slowMul || 0.45;
+        events.push({ kind: "frost", x: ft.x, y: ft.y, targetId: ft.id });
       }
     }
   }
 
-  function useUlt(player, now) {
-    var ult = ultOf(clsOf(player.classId));
-    if (!ult || (player.ultimateCharge || 0) < (ult.cost || 100)) return;
-    player.ultimateCharge = 0;
-    events.push({ kind: "ultimate", classId: player.classId, ultimateId: ult.id, x: player.x, y: player.y, angle: player.angle });
+  function useUlt(p, n) {
+    var cls = clsOf(p.classId);
+    var ult = cls.ability;
+    if (!ult || (p.ultimateCharge || 0) < (ult.cost || 100)) return;
+    if (p.stunUntil && n < p.stunUntil) return;
 
-    if (ult.id === "whirlwind") {
-      Array.from(players.values()).concat(npcs).forEach(function (t) {
-        if (!t.alive || t.team === player.team || t.id === player.id) return;
-        if (Math.hypot(t.x - player.x, t.y - player.y) <= (ult.radius || 70)) {
-          damage(t, ult.damage || 32, now, player);
-          if (ult.stun && t.stunUntil !== undefined) t.stunUntil = now + ult.stun;
-        }
+    p.ultimateCharge = 0;
+    events.push({ kind: "ultimate", ultimateId: ult.id, classId: p.classId, x: p.x, y: p.y, angle: p.angle });
+
+    if (ult.id === "fury") {
+      p.furyUntil = n + (ult.duration || 5);
+      p.furyAtkMul = ult.atkSpeedMul || 1.55;
+      p.furySpeedMul = ult.speedMul || 1.30;
+    } else if (ult.id === "fire_arrow") {
+      pushProj(p, p.angle, 500, ult.damage || 22, 1.5, 7, {
+        weaponId: "fire_arrow",
+        burnDps: ult.burnDps || 10,
+        burnDuration: ult.burnDuration || 2
       });
-      player.shield = (player.shield || 0) + (ult.shield || 20);
-    } else if (ult.id === "arrow_storm") {
-      var shots = ult.shots || 7, spread = ult.spread || 0.42;
-      for (var s = 0; s < shots; s++) {
-        var a = player.angle - spread / 2 + (spread * s) / Math.max(1, shots - 1);
-        projectiles.push({
-          x: player.x, y: player.y,
-          vx: Math.cos(a) * (ult.speed || 520), vy: Math.sin(a) * (ult.speed || 520),
-          damage: ult.damage || 18, ttl: 1.4, radius: 5,
-          ownerId: player.id, ownerTeam: player.team, weaponId: "bow"
-        });
+    } else if (ult.id === "aegis") {
+      var team = [p].concat(alliesOf(p));
+      var R = ult.radius || 160;
+      for (var i = 0; i < team.length; i++) {
+        if (Math.hypot(team[i].x - p.x, team[i].y - p.y) > R) continue;
+        team[i].teamAegisUntil = n + (ult.duration || 2.2);
+        team[i].teamAegisDodge = ult.teamDodge || 0.55;
       }
-    } else if (ult.id === "arcane_blast") {
-      Array.from(players.values()).concat(npcs).forEach(function (u) {
-        if (!u.alive || u.team === player.team || u.id === player.id) return;
-        var dist = Math.hypot(u.x - player.x, u.y - player.y);
-        if (dist <= (ult.radius || 120)) {
-          damage(u, Math.floor((ult.damage || 42) * (1 - dist / (ult.radius || 120) * 0.4)), now, player);
-          if (ult.push && dist > 0) {
-            var m = move(u.x, u.y, (u.x - player.x) / dist * ult.push, (u.y - player.y) / dist * ult.push, PR);
-            u.x = m.x; u.y = m.y;
-          }
-        }
-      });
-    } else if (ult.id === "natures_blessing") {
-      players.forEach(function (ally) {
-        if (!ally.alive || ally.team !== player.team) return;
-        if (Math.hypot(ally.x - player.x, ally.y - player.y) <= (ult.radius || 100)) {
-          var before = ally.hp;
-          ally.hp = Math.min(ally.maxHp, ally.hp + (ult.heal || 50));
-          ally.shield = (ally.shield || 0) + (ult.shield || 25);
-          events.push({ kind: "heal", x: ally.x, y: ally.y });
-          var h = ally.hp - before;
-          if (h > 0) player.ultimateCharge = Math.min(ULT.max, (player.ultimateCharge || 0) + h * ULT.heal);
-        }
-      });
+    } else if (ult.id === "meteor") {
+      var mx = p.x + Math.cos(p.angle) * (ult.range || 140);
+      var my = p.y + Math.sin(p.angle) * (ult.range || 140);
+      var count = ult.count || 5;
+      for (var m = 0; m < count; m++) {
+        var ox = mx + (Math.random() - 0.5) * 90;
+        var oy = my + (Math.random() - 0.5) * 90;
+        aoeDamage(ox, oy, ult.radius || 55, ult.damage || 26, p, true);
+        events.push({ kind: "meteor", x: ox, y: oy, radius: ult.radius || 55 });
+      }
     }
   }
 
-  function updateBots(dt, now) {
+  function init(playerConfigs) {
+    players.clear();
+    projectiles = [];
+    npcs = [];
+    inputs.clear();
+    spawns.clear();
+    killfeed = [];
+    events = [];
+    matchOver = false;
+    winnerName = null;
+    matchStart = nowSec();
+    npcId = 1;
+    towerCd = {};
+    zoneTimer = {};
+    botTimer = {};
+
+    var spawnList = defSpawns();
+    flags = defFlags().map(function (f) {
+      return {
+        id: f.id, name: f.name, x: f.x, y: f.y, radius: f.radius,
+        team: f.team, progress: 0,
+        structureHp: (f.id.indexOf("hq") >= 0) ? HQ_MAX_HP : null,
+        structureMax: (f.id.indexOf("hq") >= 0) ? HQ_MAX_HP : null
+      };
+    });
+
+    (playerConfigs || []).forEach(function (cfg, idx) {
+      var classId = cfg.classId || "warrior";
+      var cls = clsOf(classId);
+      var team = cfg.team != null ? cfg.team : (idx % 2);
+      var sp = spawnList.filter(function (s) { return s.team === team; });
+      if (!sp.length) sp = spawnList;
+      var s = sp[idx % sp.length];
+      spawns.set(cfg.id, idx);
+
+      var isBot = String(cfg.id).indexOf("bot") === 0;
+      players.set(cfg.id, {
+        id: cfg.id,
+        name: cfg.name || "Hunter",
+        classId: classId,
+        team: team,
+        x: s.x, y: s.y,
+        angle: team === 0 ? 0 : Math.PI,
+        hp: cls.maxHp || 100,
+        maxHp: cls.maxHp || 100,
+        alive: true,
+        score: 0,
+        weapon: cls.weapon || "sword",
+        appearance: cfg.appearance || null,
+        ultimateCharge: 0,
+        shield: 0,
+        skillCd: [0, 0, 0],
+        dodgeChance: cls.dodgeChance || 0,
+        lastAttackAt: 0,
+        lastAttackAnimAt: 0,
+        lastHitFlashAt: -999,
+        isBot: isBot
+      });
+      console.log("[HostSim] player", cfg.id, classId, "team", team);
+    });
+
+    console.log("[HostSim] init players=", players.size);
+  }
+
+  function setInput(id, input) {
+    inputs.set(id, input || {});
+  }
+
+  function updateBots(n) {
     players.forEach(function (p) {
-      if (!p.id || p.id.indexOf("bot-") !== 0 || !p.alive) return;
-      if (p.stunUntil && now < p.stunUntil) return;
-      botTimer[p.id] = (botTimer[p.id] || 0) - dt;
-      if (botTimer[p.id] > 0) return;
-      botTimer[p.id] = 0.3;
+      if (!p.isBot || !p.alive) return;
+      if (p.stunUntil && n < p.stunUntil) return;
+      var t = botTimer[p.id] || 0;
+      if (n < t) return;
+      botTimer[p.id] = n + 0.25;
 
-      var best = null, bestD = 900;
-      players.forEach(function (o) {
-        if (!o.alive || o.team === p.team || o.id === p.id) return;
-        var d = Math.hypot(o.x - p.x, o.y - p.y);
-        if (d < bestD) { bestD = d; best = o; }
-      });
-      npcs.forEach(function (n) {
-        if (!n.alive || n.team === p.team) return;
-        var d = Math.hypot(n.x - p.x, n.y - p.y);
-        if (d < bestD) { bestD = d; best = n; }
-      });
-
-      var goal = best;
-      if (!goal || bestD > 280) {
-        midFlags().forEach(function (f) {
-          if (f.team === p.team) return;
-          if (!goal || Math.hypot(f.x - p.x, f.y - p.y) < Math.hypot(goal.x - p.x, goal.y - p.y)) goal = f;
-        });
+      var enemies = enemiesOf(p);
+      var best = null;
+      var bestD = 9999;
+      for (var i = 0; i < enemies.length; i++) {
+        var d = Math.hypot(enemies[i].x - p.x, enemies[i].y - p.y);
+        if (d < bestD) { bestD = d; best = enemies[i]; }
       }
-      if (!goal) {
-        flags.forEach(function (f) {
-          if (p.team === 0 && f.id === "castle_hq") goal = f;
-          if (p.team === 1 && f.id === "camp_hq") goal = f;
-        });
-      }
-      if (!goal) return;
-
-      var ang = Math.atan2(goal.y - p.y, goal.x - p.x);
-      p.angle = ang;
-      var spd = BASE_SPEED * (p.speedMul || 1) * dt;
-      var m = move(p.x, p.y, Math.cos(ang) * spd, Math.sin(ang) * spd, PR);
-      p.x = m.x; p.y = m.y;
-      if ((p.ultimateCharge || 0) >= 90 && best && bestD < 140) useUlt(p, now);
-      inputs.set(p.id, { dx: Math.cos(ang), dy: Math.sin(ang), angle: ang, attack: best && bestD < 90, weapon: p.weapon, ultimate: false });
+      var ang = best ? Math.atan2(best.y - p.y, best.x - p.x) : p.angle;
+      var wantUlt = (p.ultimateCharge || 0) >= 95 && best && bestD < 160;
+      inputs.set(p.id, {
+        dx: Math.cos(ang), dy: Math.sin(ang), angle: ang,
+        attack: best && bestD < 100,
+        skill0: best && bestD < 80 && Math.random() < 0.08,
+        skill1: Math.random() < 0.04,
+        skill2: Math.random() < 0.04,
+        ultimate: wantUlt
+      });
     });
   }
 
-  function updateFlags(dt) {
-    for (var i = 0; i < flags.length; i++) {
-      var f = flags[i];
-      if (f.id === "camp_hq" || f.id === "castle_hq") continue;
-      var c0 = 0, c1 = 0;
-      players.forEach(function (p) {
-        if (!p.alive) return;
-        if (Math.hypot(p.x - f.x, p.y - f.y) <= f.radius) {
-          if (p.team === 0) c0++; else c1++;
-        }
-      });
-      if ((c0 > 0) !== (c1 > 0) && (c0 + c1) > 0) {
-        var capt = c0 > 0 ? 0 : 1;
-        if (f.team === capt) { f.progress = 0; f.capturingTeam = -1; }
-        else {
-          f.capturingTeam = capt;
-          f.progress += dt / CAPTURE_TIME;
-          if (f.progress >= 1) {
-            var old = f.team;
-            f.team = capt; f.progress = 0; f.capturingTeam = -1;
-            npcs.forEach(function (n) {
-              if (n.zoneId === f.id && n.team === old) { n.alive = false; n.hp = 0; }
-            });
-            zoneTimer[f.id] = 0;
-            events.push({ kind: "capture", flagId: f.id, team: capt, x: f.x, y: f.y });
-          }
-        }
-      } else {
-        f.progress = Math.max(0, f.progress - dt / (CAPTURE_TIME * 0.8));
-        if (f.progress <= 0) f.capturingTeam = -1;
-      }
-    }
-  }
-
-  function updateTowers(now) {
-    defTowers().forEach(function (tw) {
-      if (now < (towerCd[tw.id] || 0)) return;
-      var best = null, bestD = tw.range;
-      function consider(u) {
-        if (!u.alive || u.team === tw.team) return;
-        var d = Math.hypot(u.x - tw.x, u.y - tw.y);
-        if (d < bestD) { bestD = d; best = u; }
-      }
-      players.forEach(consider);
-      npcs.forEach(consider);
-      if (best) {
-        towerCd[tw.id] = now + tw.cooldown;
-        damage(best, tw.damage, now, null);
-        events.push({ kind: "tower_shot", x: tw.x, y: tw.y, tx: best.x, ty: best.y });
-      }
-    });
-  }
-
-  function countNpcs(zoneId, team) {
-    var n = 0;
-    for (var i = 0; i < npcs.length; i++) {
-      if (npcs[i].alive && npcs[i].zoneId === zoneId && npcs[i].team === team) n++;
-    }
-    return n;
-  }
-
-  function spawnCats(dt) {
-    midFlags().forEach(function (f) {
-      if (f.team !== 0 && f.team !== 1) return;
-      var units = ZONE_UNITS[f.id];
-      if (!units) return;
-      zoneTimer[f.id] = (zoneTimer[f.id] || 0) + dt;
-      var owned = countNpcs(f.id, f.team);
-      if (owned >= NPC_PER_ZONE || zoneTimer[f.id] < SPAWN_INTERVAL) return;
-      zoneTimer[f.id] = 0;
-      var def = units[owned] || units[0];
-      npcs.push({
-        id: "npc-" + (npcId++), name: def.name, team: f.team, zoneId: f.id,
-        classId: def.classId, isCat: true, isRam: !!def.isRam, isRanged: !!def.ranged,
-        x: f.x + (Math.random() - 0.5) * 40, y: f.y + (Math.random() - 0.5) * 40,
-        angle: f.team === 0 ? 0 : Math.PI,
-        hp: def.hp, maxHp: def.hp, alive: true,
-        speed: def.speed, damage: def.damage, range: def.range,
-        attackCooldown: def.cd, lastAttackAt: 0, color: def.color, stuckTimer: 0
-      });
-      events.push({ kind: "spawn", x: f.x, y: f.y, team: f.team, classId: def.classId });
-    });
-  }
-
-  function updateNpcs(dt, now) {
-    for (var i = 0; i < npcs.length; i++) {
-      var n = npcs[i];
-      if (!n.alive) continue;
-      var target = null, bestD = n.isRam ? 1200 : 480;
-
-      if (n.isRam) {
-        flags.forEach(function (ff) {
-          if (n.team === 0 && ff.id === "castle_hq") { target = { x: ff.x, y: ff.y, isStructure: true, flag: ff }; bestD = Math.hypot(ff.x - n.x, ff.y - n.y); }
-          if (n.team === 1 && ff.id === "camp_hq") { target = { x: ff.x, y: ff.y, isStructure: true, flag: ff }; bestD = Math.hypot(ff.x - n.x, ff.y - n.y); }
-        });
-      }
-      if (!n.isRam || bestD > 80) {
-        players.forEach(function (p) {
-          if (!p.alive || p.team === n.team) return;
-          var d = Math.hypot(p.x - n.x, p.y - n.y);
-          if (d < bestD) { bestD = d; target = p; }
-        });
-        npcs.forEach(function (o) {
-          if (!o.alive || o.team === n.team || o.id === n.id) return;
-          var d = Math.hypot(o.x - n.x, o.y - n.y);
-          if (d < bestD) { bestD = d; target = o; }
-        });
-      }
-      if (!target) continue;
-
-      n.angle = Math.atan2(target.y - n.y, target.x - n.x);
-      var rad = n.isRam ? 16 : 12;
-      if (bestD > (n.range || 36)) {
-        var m = move(n.x, n.y, Math.cos(n.angle) * n.speed * dt, Math.sin(n.angle) * n.speed * dt, rad);
-        n.x = m.x; n.y = m.y;
-      } else if (now - (n.lastAttackAt || 0) >= (n.attackCooldown || 0.9)) {
-        n.lastAttackAt = now;
-        if (target.isStructure && target.flag) {
-          target.flag.structureHp = Math.max(0, (target.flag.structureHp || 0) - (n.isRam ? RAM_DMG : 8));
-          if (target.flag.structureHp <= 0) {
-            matchOver = true;
-            winnerName = n.team === 0 ? "Camp" : "Castle";
-          }
-        } else {
-          damage(target, n.damage || 12, now, null);
-        }
-      }
-    }
-    npcs = npcs.filter(function (n) { return n.alive; });
-  }
-
-  function updatePlayers(dt, now) {
-    players.forEach(function (p) {
-      if (!p.alive) {
-        if (Number.isFinite(p.respawnAt) && now >= p.respawnAt) {
-          var info = spawns.get(p.id);
-          if (info) { p.x = info.x; p.y = info.y; }
-          p.hp = p.maxHp; p.alive = true; p.shield = 0;
-          p.ultimateCharge = Math.min(40, p.ultimateCharge || 0);
-        }
-        return;
-      }
-      if (p.stunUntil && now < p.stunUntil) return;
-
-      var input = inputs.get(p.id) || { dx: 0, dy: 0, angle: p.angle, attack: false, weapon: p.weapon, ultimate: false };
-
-      if (p.id.indexOf("bot-") !== 0) {
-        var len = Math.hypot(input.dx || 0, input.dy || 0);
-        if (len > 0.1) {
-          var spd = BASE_SPEED * (p.speedMul || 1) * dt;
-          var m = move(p.x, p.y, (input.dx / len) * spd, (input.dy / len) * spd, PR);
-          p.x = m.x; p.y = m.y;
-        }
-        if (input.angle != null) p.angle = input.angle;
-        if (input.weapon && typeof WEAPONS !== "undefined" && WEAPONS[input.weapon]) p.weapon = input.weapon;
-      }
-
-      if (input.attack) {
-        var w = (typeof WEAPONS !== "undefined") ? WEAPONS[p.weapon] : null;
-        if (w && now - (p.lastAttackAt || 0) >= (w.cooldown || 0.6)) {
-          p.lastAttackAt = now;
-          p.lastAttackAnimAt = now;
-          if (w.type === "melee") {
-            var half = ((w.angle || 60) * Math.PI / 180) / 2;
-            Array.from(players.values()).concat(npcs).forEach(function (t) {
-              if (!t.alive || t.team === p.team || t.id === p.id) return;
-              var dist = Math.hypot(t.x - p.x, t.y - p.y);
-              if (dist > (w.range || 50) + PR) return;
-              var ang = Math.atan2(t.y - p.y, t.x - p.x);
-              var diff = Math.abs(((ang - p.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-              if (diff > half) return;
-              damage(t, w.damage || 30, now, p);
-            });
-          } else {
-            var spd2 = w.speed || 480;
-            projectiles.push({
-              x: p.x, y: p.y,
-              vx: Math.cos(p.angle) * spd2, vy: Math.sin(p.angle) * spd2,
-              damage: w.damage || 30, ttl: 1.5, radius: 5,
-              ownerId: p.id, ownerTeam: p.team, weaponId: p.weapon
-            });
-          }
-        }
-      }
-      if (input.ultimate) useUlt(p, now);
-    });
-  }
-
-  function updateProjectiles(dt, now) {
-    var keep = [];
+  function updateProjectiles(dt, n) {
+    var survivors = [];
     for (var i = 0; i < projectiles.length; i++) {
-      var p = projectiles[i];
-      p.x += p.vx * dt; p.y += p.vy * dt;
-      p.ttl = (p.ttl || 2) - dt;
-      if (p.ttl <= 0) continue;
-      if (typeof GameMap !== "undefined" && GameMap.pointBlocked && GameMap.pointBlocked(p.x, p.y)) continue;
+      var pr = projectiles[i];
+      pr.x += pr.vx * dt;
+      pr.y += pr.vy * dt;
+      pr.ttl -= dt;
+      if (pr.ttl <= 0) continue;
+      if (typeof GameMap !== "undefined" && GameMap.pointBlocked && GameMap.pointBlocked(pr.x, pr.y)) continue;
+
       var hit = false;
-      var all = Array.from(players.values()).concat(npcs);
-      for (var j = 0; j < all.length; j++) {
-        var t = all[j];
-        if (!t.alive || t.id === p.ownerId || t.team === p.ownerTeam) continue;
-        if (Math.hypot(t.x - p.x, t.y - p.y) <= PR + (p.radius || 5)) {
-          damage(t, p.damage || 30, now, players.get(p.ownerId));
+      var targets = playersArr().concat(npcs);
+      for (var j = 0; j < targets.length; j++) {
+        var t = targets[j];
+        if (!t.alive || t.id === pr.ownerId || t.team === pr.team) continue;
+        if (Math.hypot(t.x - pr.x, t.y - pr.y) <= PR + (pr.radius || 5)) {
+          var attacker = players.get(pr.ownerId);
+          hurt(t, pr.damage, attacker);
+          if (pr.burnDps && pr.burnDuration) {
+            t.burnUntil = n + pr.burnDuration;
+            t.burnDps = pr.burnDps;
+            t.burnAttackerId = pr.ownerId;
+          }
+          if (pr.slowMul && pr.slowDuration) {
+            t.slowUntil = n + pr.slowDuration;
+            t.slowMul = pr.slowMul;
+          }
           hit = true;
           break;
         }
       }
-      if (!hit) keep.push(p);
+      if (!hit) survivors.push(pr);
     }
-    projectiles = keep;
+    projectiles = survivors;
   }
 
-  function checkWin(now) {
-    if (matchOver) return;
-    if (now - matchStart >= MATCH_DURATION) {
-      matchOver = true;
-      var camp = 0, castle = 0;
-      flags.forEach(function (f) {
-        if (f.id === "camp_hq") camp += f.structureHp || 0;
-        if (f.id === "castle_hq") castle += f.structureHp || 0;
-        if (f.team === 0) camp += 50;
-        if (f.team === 1) castle += 50;
+  function updateFlags(dt, n) {
+    for (var i = 0; i < flags.length; i++) {
+      var f = flags[i];
+      if (f.id.indexOf("hq") >= 0) continue;
+      var present = { 0: 0, 1: 0 };
+      playersArr().forEach(function (p) {
+        if (!p.alive) return;
+        if (Math.hypot(p.x - f.x, p.y - f.y) <= f.radius) present[p.team] = (present[p.team] || 0) + 1;
       });
-      winnerName = camp >= castle ? "Camp" : "Castle";
-      return;
-    }
-    flags.forEach(function (f) {
-      if (f.structureHp != null && f.structureHp <= 0) {
-        matchOver = true;
-        winnerName = f.id === "camp_hq" ? "Castle" : "Camp";
+      var c0 = present[0] || 0;
+      var c1 = present[1] || 0;
+      if (c0 > 0 && c1 === 0) {
+        if (f.team === 0) f.progress = 1;
+        else {
+          f.progress = Math.min(1, (f.progress || 0) + dt / CAPTURE_TIME);
+          if (f.progress >= 1) { f.team = 0; f.progress = 1; }
+        }
+      } else if (c1 > 0 && c0 === 0) {
+        if (f.team === 1) f.progress = 1;
+        else {
+          f.progress = Math.min(1, (f.progress || 0) + dt / CAPTURE_TIME);
+          if (f.progress >= 1) { f.team = 1; f.progress = 1; }
+        }
+      } else {
+        f.progress = Math.max(0, (f.progress || 0) - dt / CAPTURE_TIME);
       }
-    });
+
+      // NPC spawn from captured zones
+      if (f.team === 0 || f.team === 1) {
+        zoneTimer[f.id] = (zoneTimer[f.id] || 0) + dt;
+        if (zoneTimer[f.id] >= SPAWN_INTERVAL) {
+          zoneTimer[f.id] = 0;
+          var living = npcs.filter(function (x) { return x.alive && x.zoneId === f.id; }).length;
+          if (living < NPC_PER_ZONE) {
+            var pool = ZONE_UNITS[f.id] || [CATS.warrior];
+            var def = pool[Math.floor(Math.random() * pool.length)];
+            npcs.push({
+              id: "npc-" + (npcId++),
+              name: def.name,
+              classId: def.classId,
+              team: f.team,
+              zoneId: f.id,
+              x: f.x + (Math.random() - 0.5) * 40,
+              y: f.y + (Math.random() - 0.5) * 40,
+              angle: 0,
+              hp: def.hp,
+              maxHp: def.hp,
+              alive: true,
+              speed: def.speed,
+              damage: def.damage,
+              range: def.range,
+              attackCooldown: def.cd,
+              lastAttackAt: 0,
+              color: def.color,
+              isCat: true,
+              isRam: !!def.isRam,
+              isRanged: !!def.ranged
+            });
+          }
+        }
+      }
+    }
+  }
+
+  function updateNpcs(dt, n) {
+    for (var i = 0; i < npcs.length; i++) {
+      var c = npcs[i];
+      if (!c.alive) continue;
+      var targets = playersArr().filter(function (p) { return p.alive && p.team !== c.team; });
+      var best = null;
+      var bestD = 9999;
+      for (var j = 0; j < targets.length; j++) {
+        var d = Math.hypot(targets[j].x - c.x, targets[j].y - c.y);
+        if (d < bestD) { bestD = d; best = targets[j]; }
+      }
+      if (!best) continue;
+      c.angle = Math.atan2(best.y - c.y, best.x - c.x);
+      if (bestD > (c.range || 40) * 0.85) {
+        var sp = c.speed * dt;
+        var nx = c.x + Math.cos(c.angle) * sp;
+        var ny = c.y + Math.sin(c.angle) * sp;
+        if (typeof GameMap !== "undefined" && GameMap.tryMove) {
+          var m = GameMap.tryMove(c.x, c.y, nx - c.x, ny - c.y, 12);
+          c.x = m.x; c.y = m.y;
+        } else {
+          c.x = nx; c.y = ny;
+        }
+      } else if (n - (c.lastAttackAt || 0) >= (c.attackCooldown || 1)) {
+        c.lastAttackAt = n;
+        if (c.isRanged) {
+          pushProj(c, c.angle, 320, c.damage, 1.0, 4, { weaponId: "bow" });
+        } else {
+          hurt(best, c.damage, c);
+        }
+      }
+    }
+  }
+
+  function updateTowers(n) {
+    var towers = defTowers();
+    for (var i = 0; i < towers.length; i++) {
+      var tw = towers[i];
+      if (n < (towerCd[tw.id] || 0)) continue;
+      var targets = playersArr().filter(function (p) {
+        return p.alive && p.team !== tw.team && Math.hypot(p.x - tw.x, p.y - tw.y) <= tw.range;
+      });
+      if (!targets.length) continue;
+      var t = targets[0];
+      hurt(t, tw.damage, { id: "tower-" + tw.id, name: "Tower", team: tw.team });
+      towerCd[tw.id] = n + (tw.cooldown || 1.2);
+    }
   }
 
   function tick(dt) {
-    if (matchOver) return;
-    var now = performance.now() / 1000;
+    if (matchOver) return getSnapshot();
+    var n = nowSec();
     events = [];
-    updateBots(dt, now);
-    updatePlayers(dt, now);
-    updateProjectiles(dt, now);
-    updateFlags(dt);
-    updateTowers(now);
-    spawnCats(dt);
-    updateNpcs(dt, now);
-    checkWin(now);
+
+    updateBots(n);
+    updateFlags(dt, n);
+    updateNpcs(dt, n);
+    updateTowers(n);
+    updateProjectiles(dt, n);
+
+    // Burn ticks
+    playersArr().forEach(function (p) {
+      if (p.burnUntil && n < p.burnUntil && p.alive) {
+        var bd = (p.burnDps || 8) * dt;
+        var atk = players.get(p.burnAttackerId);
+        hurt(p, bd, atk);
+      }
+    });
+
+    players.forEach(function (p) {
+      if (!p.alive) {
+        if (p.respawnAt && n >= p.respawnAt) {
+          var spawnList = defSpawns().filter(function (s) { return s.team === p.team; });
+          var s = spawnList[0] || defSpawns()[0];
+          p.x = s.x; p.y = s.y;
+          p.hp = p.maxHp;
+          p.alive = true;
+          p.shield = 0;
+        }
+        return;
+      }
+      if (p.stunUntil && n < p.stunUntil) return;
+
+      var input = inputs.get(p.id) || {};
+      p.angle = input.angle != null ? input.angle : p.angle;
+
+      var cls = clsOf(p.classId);
+      var speed = BASE_SPEED * (cls.speedMul || 1);
+      if (p.furyUntil && n < p.furyUntil) speed *= (p.furySpeedMul || 1.3);
+      if (p.slowUntil && n < p.slowUntil) speed *= (p.slowMul || 0.5);
+
+      var dx = (input.dx || 0);
+      var dy = (input.dy || 0);
+      var len = Math.hypot(dx, dy);
+      if (len > 1) { dx /= len; dy /= len; }
+      var mx = dx * speed * dt;
+      var my = dy * speed * dt;
+      if (typeof GameMap !== "undefined" && GameMap.tryMove) {
+        var moved = GameMap.tryMove(p.x, p.y, mx, my, PR);
+        p.x = moved.x; p.y = moved.y;
+      } else {
+        p.x += mx; p.y += my;
+      }
+
+      // Skills
+      if (input.skill0) useSkill(p, 0, n);
+      if (input.skill1) useSkill(p, 1, n);
+      if (input.skill2) useSkill(p, 2, n);
+      if (input.ultimate) useUlt(p, n);
+
+      // Basic attack (monk has none)
+      if (input.attack && !cls.noBasicAttack) {
+        var w = weaponOf(p.weapon || cls.weapon);
+        var cd = w.cooldown || 0.55;
+        if (p.furyUntil && n < p.furyUntil) cd /= (p.furyAtkMul || 1.5);
+        if (n - (p.lastAttackAt || 0) >= cd) {
+          p.lastAttackAt = n;
+          p.lastAttackAnimAt = n;
+          if (w.type === "melee") {
+            var foes = enemiesOf(p).concat(npcs.filter(function (x) { return x.alive && x.team !== p.team; }));
+            for (var fi = 0; fi < foes.length; fi++) {
+              var foe = foes[fi];
+              var dist = Math.hypot(foe.x - p.x, foe.y - p.y);
+              if (dist > (w.range || 42) + PR) continue;
+              if (angleDiff(Math.atan2(foe.y - p.y, foe.x - p.x), p.angle) > ((w.angle || 70) * Math.PI / 180) / 2) continue;
+              hurt(foe, w.damage || 18, p);
+            }
+          } else {
+            pushProj(p, p.angle, 400, w.damage || 16, 1.1, 5, { weaponId: w.id || "bow" });
+          }
+        }
+      }
+    });
+
+    // HQ damage from rams near HQ flags
+    flags.forEach(function (f) {
+      if (!f.structureHp) return;
+      npcs.forEach(function (c) {
+        if (!c.alive || !c.isRam || c.team === f.team) return;
+        if (Math.hypot(c.x - f.x, c.y - f.y) < f.radius + 20) {
+          f.structureHp = Math.max(0, f.structureHp - 18 * dt);
+        }
+      });
+    });
+
+    // Win conditions
+    var timeLeft = Math.max(0, MATCH_DURATION - (n - matchStart));
+    var campHq = flags.find(function (f) { return f.id === "camp_hq"; });
+    var castleHq = flags.find(function (f) { return f.id === "castle_hq"; });
+    if (campHq && campHq.structureHp <= 0) {
+      matchOver = true; winnerName = "Castle";
+    } else if (castleHq && castleHq.structureHp <= 0) {
+      matchOver = true; winnerName = "Camp";
+    } else if (timeLeft <= 0) {
+      matchOver = true;
+      var c0 = flags.filter(function (f) { return f.team === 0; }).length;
+      var c1 = flags.filter(function (f) { return f.team === 1; }).length;
+      winnerName = c0 >= c1 ? "Camp" : "Castle";
+    }
+
+    return getSnapshot();
   }
 
-  function getSnapshotPayload() {
-    var now = performance.now() / 1000;
+  function getSnapshot() {
+    var n = nowSec();
     return {
-      players: Array.from(players.values()).map(function (p) {
+      timeLeft: Math.max(0, MATCH_DURATION - (n - matchStart)),
+      matchOver: matchOver,
+      winnerName: winnerName,
+      players: playersArr().map(function (p) {
         return {
           id: p.id, name: p.name, x: p.x, y: p.y, angle: p.angle,
-          hp: p.hp, maxHp: p.maxHp, weapon: p.weapon, alive: p.alive,
-          team: p.team, classId: p.classId, score: p.score || 0,
-          ultimateCharge: p.ultimateCharge || 0, shield: p.shield || 0,
-          appearance: p.appearance, lastHitFlashAt: p.lastHitFlashAt,
-          lastAttackAnimAt: p.lastAttackAnimAt, colorIndex: p.colorIndex
+          hp: p.hp, maxHp: p.maxHp, alive: p.alive, team: p.team,
+          classId: p.classId, score: p.score || 0,
+          ultimateCharge: p.ultimateCharge || 0,
+          shield: p.shield || 0,
+          skillCd: p.skillCd ? p.skillCd.slice() : [0, 0, 0],
+          appearance: p.appearance,
+          weapon: p.weapon,
+          lastAttackAnimAt: p.lastAttackAnimAt,
+          lastHitFlashAt: p.lastHitFlashAt,
+          blockUntil: p.blockUntil,
+          furyUntil: p.furyUntil,
+          stunUntil: p.stunUntil
         };
       }),
-      projectiles: projectiles.slice(),
-      npcs: npcs.filter(function (n) { return n.alive; }).map(function (n) {
+      npcs: npcs.filter(function (c) { return c.alive; }).map(function (c) {
         return {
-          id: n.id, name: n.name, x: n.x, y: n.y, angle: n.angle,
-          hp: n.hp, maxHp: n.maxHp, alive: true, team: n.team,
-          color: n.color, isRam: n.isRam, isCat: true, classId: n.classId
+          id: c.id, name: c.name, x: c.x, y: c.y, angle: c.angle,
+          hp: c.hp, maxHp: c.maxHp, alive: true, team: c.team,
+          color: c.color, isRam: c.isRam, isCat: true, classId: c.classId
         };
+      }),
+      projectiles: projectiles.map(function (pr) {
+        return { x: pr.x, y: pr.y, vx: pr.vx, vy: pr.vy, radius: pr.radius, weaponId: pr.weaponId, team: pr.team };
       }),
       flags: flags.map(function (f) {
         return {
           id: f.id, name: f.name, x: f.x, y: f.y, radius: f.radius,
-          team: f.team, progress: f.progress, capturingTeam: f.capturingTeam,
+          team: f.team, progress: f.progress || 0,
           structureHp: f.structureHp, structureMax: f.structureMax
         };
       }),
-      killfeed: killfeed.slice(0, 6),
-      timeLeft: Math.max(0, MATCH_DURATION - (now - matchStart)),
-      matchOver: matchOver,
-      winnerName: winnerName,
+      killfeed: killfeed.slice(),
       events: events.slice()
     };
   }
 
-  console.log("[HostSim] module ready");
+  console.log("[HostSim] ready — skill kits");
   return {
     init: init,
     setInput: setInput,
-    markDisconnected: markDisconnected,
     tick: tick,
-    getSnapshotPayload: getSnapshotPayload
+    getSnapshot: getSnapshot
   };
 })();
