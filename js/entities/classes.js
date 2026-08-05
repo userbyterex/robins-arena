@@ -1,5 +1,6 @@
 /**
- * entities/classes.js — Class kits: 3 skills + ultimate.
+ * entities/classes.js — Class kits
+ * Basic attack = weapon (attack stick). Skills = specials / AOE with CD.
  */
 console.log("[CLASSES] loading kits…");
 
@@ -18,10 +19,10 @@ var CLASSES = {
         id: "thrust",
         name: "Thrust",
         icon: "🗡️",
-        cooldown: 3.0,
+        cooldown: 2.5,
         range: 48,
         damageMul: 1.65,
-        desc: "Powerful thrust — extra damage"
+        desc: "Power thrust — bonus damage"
       },
       {
         id: "guard",
@@ -29,7 +30,7 @@ var CLASSES = {
         icon: "🛡️",
         cooldown: 8.0,
         duration: 1.25,
-        desc: "Raise shield — block all damage briefly"
+        desc: "Block all damage briefly"
       },
       {
         id: "cleave",
@@ -38,7 +39,7 @@ var CLASSES = {
         cooldown: 5.0,
         range: 62,
         damage: 30,
-        desc: "Wide sword sweep around you"
+        desc: "AOE sword sweep"
       }
     ],
     ability: {
@@ -72,7 +73,7 @@ var CLASSES = {
         damage: 38,
         range: 280,
         guaranteed: true,
-        desc: "Never misses — high damage"
+        desc: "Guaranteed high-damage shot"
       },
       {
         id: "arrow_rain",
@@ -82,7 +83,7 @@ var CLASSES = {
         shots: 6,
         spread: 0.55,
         damage: 14,
-        desc: "Fan of arrows"
+        desc: "AOE fan of arrows"
       },
       {
         id: "sidestep",
@@ -103,7 +104,7 @@ var CLASSES = {
       burnDps: 10,
       burnDuration: 2.0,
       range: 300,
-      desc: "Arrow that burns for 2 seconds"
+      desc: "Burns target for 2s"
     }
   },
 
@@ -125,7 +126,7 @@ var CLASSES = {
         cooldown: 3.0,
         healPct: 0.08,
         range: 90,
-        desc: "Heal ally in front (\~8% max HP)"
+        desc: "Heal ally in front \~8%"
       },
       {
         id: "ward",
@@ -135,7 +136,7 @@ var CLASSES = {
         duration: 2.0,
         damageReduce: 0.20,
         range: 100,
-        desc: "Ally takes 20% less damage for 2s"
+        desc: "Ally -20% damage for 2s"
       },
       {
         id: "group_heal",
@@ -144,7 +145,7 @@ var CLASSES = {
         cooldown: 7.0,
         healPct: 0.10,
         radius: 140,
-        desc: "Heal all nearby allies 10%"
+        desc: "Heal nearby allies 10%"
       }
     ],
     ability: {
@@ -155,7 +156,7 @@ var CLASSES = {
       duration: 2.2,
       teamDodge: 0.55,
       radius: 160,
-      desc: "Team high dodge for 2s"
+      desc: "Team high dodge 2s"
     }
   },
 
@@ -173,11 +174,12 @@ var CLASSES = {
         id: "energy_bolt",
         name: "Bolt",
         icon: "⚡",
-        cooldown: 0.9,
+        cooldown: 0,
+        isBasic: true,
         damage: 22,
         speed: 420,
         range: 260,
-        desc: "Energy projectile"
+        desc: "Basic energy bolt (no skill CD)"
       },
       {
         id: "fire_rain",
@@ -187,7 +189,7 @@ var CLASSES = {
         radius: 70,
         damage: 28,
         range: 200,
-        desc: "AOE burst at aim point"
+        desc: "AOE burst at aim"
       },
       {
         id: "frost",
@@ -198,7 +200,7 @@ var CLASSES = {
         slowMul: 0.45,
         range: 220,
         damage: 12,
-        desc: "Slow target for 2.5s"
+        desc: "Slow target 2.5s"
       }
     ],
     ability: {
@@ -210,7 +212,7 @@ var CLASSES = {
       radius: 55,
       damage: 26,
       range: 180,
-      desc: "Meteors rain on aimed area"
+      desc: "Meteors on aim area"
     }
   }
 };
@@ -230,7 +232,6 @@ function getUltimate(classId) {
   return getClass(classId).ability || null;
 }
 
-// Legacy aliases
 var ABILITY_ALIASES = {
   whirlwind: "fury",
   arrow_storm: "fire_arrow",
@@ -246,4 +247,4 @@ function resolveAbilityId(id) {
   return ABILITY_ALIASES[id] || id;
 }
 
-console.log("[CLASSES] ready — kits:", CLASS_ORDER.join(", "));
+console.log("[CLASSES] ready —", CLASS_ORDER.join(", "));
