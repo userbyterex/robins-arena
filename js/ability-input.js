@@ -1,5 +1,5 @@
 /**
- * ability-input.js — Skill bar (3) + ULT, touch + keys 1/2/3/Space.
+ * ability-input.js — 3 skills + ULT
  */
 var AbilityInput = (function () {
   console.log("[AbilityInput] loading…");
@@ -10,8 +10,6 @@ var AbilityInput = (function () {
   var buttons = [];
   var ultBtn = null;
   var localClassId = "warrior";
-  var cdUntil = [0, 0, 0];
-  var ultReady = false;
 
   function ensureBar() {
     barEl = document.getElementById("ability-bar");
@@ -32,9 +30,9 @@ var AbilityInput = (function () {
         btn.type = "button";
         btn.className = "skill-btn";
         btn.dataset.skill = String(idx);
-        btn.innerHTML = '<span class="skill-icon">?</span><span class="skill-cd"></span>';
+        btn.innerHTML = '<span class="skill-icon">•</span><span class="skill-cd"></span>';
         function press(e) {
-          if (e) e.preventDefault();
+          if (e) { e.preventDefault(); e.stopPropagation(); }
           skillPressed[idx] = true;
         }
         btn.addEventListener("touchstart", press, { passive: false });
@@ -48,7 +46,7 @@ var AbilityInput = (function () {
     if (ultBtn) {
       ultBtn.classList.add("ult-btn");
       function pressUlt(e) {
-        if (e) e.preventDefault();
+        if (e) { e.preventDefault(); e.stopPropagation(); }
         ultPressed = true;
       }
       ultBtn.addEventListener("touchstart", pressUlt, { passive: false });
@@ -63,22 +61,24 @@ var AbilityInput = (function () {
     for (var i = 0; i < 3; i++) {
       var sk = cls.skills && cls.skills[i];
       if (buttons[i] && sk) {
-        buttons[i].querySelector(".skill-icon").textContent = sk.icon || "•";
-        buttons[i].title = sk.name + " — " + (sk.desc || "");
+        var icon = buttons[i].querySelector(".skill-icon");
+        if (icon) icon.textContent = sk.icon || "•";
+        buttons[i].title = (sk.name || "") + " — " + (sk.desc || "");
+        buttons[i].classList.toggle("is-basic", !!sk.isBasic || sk.cooldown === 0);
       }
     }
     if (ultBtn && cls.ability) {
       ultBtn.innerHTML = '<span class="ult-icon">' + (cls.ability.icon || "ULT") + "</span>";
-      ultBtn.title = cls.ability.name + " — " + (cls.ability.desc || "");
+      ultBtn.title = (cls.ability.name || "ULT") + " — " + (cls.ability.desc || "");
     }
   }
 
   function setCooldowns(cds, ultimateCharge) {
     var now = performance.now() / 1000;
     for (var i = 0; i < 3; i++) {
-      cdUntil[i] = cds && cds[i] != null ? cds[i] : 0;
       if (!buttons[i]) continue;
-      var left = Math.max(0, cdUntil[i] - now);
+      var until = (cds && cds[i] != null) ? cds[i] : 0;
+      var left = (until > 0) ? Math.max(0, until - now) : 0;
       var cdEl = buttons[i].querySelector(".skill-cd");
       if (left > 0.05) {
         buttons[i].classList.add("on-cd");
@@ -88,10 +88,10 @@ var AbilityInput = (function () {
         if (cdEl) cdEl.textContent = "";
       }
     }
-    ultReady = (ultimateCharge || 0) >= 100;
+    var ready = (ultimateCharge || 0) >= 100;
     if (ultBtn) {
-      ultBtn.classList.toggle("ult-ready", ultReady);
-      ultBtn.classList.toggle("ult-charging", !ultReady);
+      ultBtn.classList.toggle("ult-ready", ready);
+      ultBtn.classList.toggle("ult-charging", !ready);
     }
   }
 
@@ -122,7 +122,6 @@ var AbilityInput = (function () {
     ensureBar();
     window.addEventListener("keydown", onKeyDown);
     setClass(localClassId);
-    console.log("[AbilityInput] ready");
   }
 
   return {
