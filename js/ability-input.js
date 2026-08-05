@@ -64,7 +64,6 @@ var AbilityInput = (function () {
         var icon = buttons[i].querySelector(".skill-icon");
         if (icon) icon.textContent = sk.icon || "•";
         buttons[i].title = (sk.name || "") + " — " + (sk.desc || "");
-        buttons[i].classList.toggle("is-basic", !!sk.isBasic || sk.cooldown === 0);
       }
     }
     if (ultBtn && cls.ability) {
