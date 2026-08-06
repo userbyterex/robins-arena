@@ -1,6 +1,7 @@
 /**
- * entities/classes.js — Class kits
- * Basic attack = weapon (attack stick). Skills = specials / AOE with CD.
+ * entities/classes.js — Class kits (3 skills + ultimate)
+ * Basic attack = weapon stick (short weapon CD).
+ * Skills start ready (CD 0 at match start); only specials/AOE use skill CD after cast.
  */
 console.log("[CLASSES] loading kits…");
 
@@ -83,7 +84,7 @@ var CLASSES = {
         shots: 6,
         spread: 0.55,
         damage: 14,
-        desc: "AOE fan of arrows"
+        desc: "Fan of arrows"
       },
       {
         id: "sidestep",
